@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+*.swp
+*.swo
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+
+# Swift
+.build/
+.swiftpm/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.egg-info/
+.env
+
+# Node
+node_modules/
+dist/
+dist-electron/
+
+# Electron
+out/
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+*.app
+*.dmg
+*.exe
+*.msi

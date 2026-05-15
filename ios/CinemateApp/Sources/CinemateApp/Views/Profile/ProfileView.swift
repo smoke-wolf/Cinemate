@@ -1,0 +1,301 @@
+import SwiftUI
+
+struct ProfileView: View {
+    @EnvironmentObject var apiClient: APIClient
+    let account: Account
+
+    @State private var stats: AccountStats?
+    @State private var showSettings = false
+    @State private var showSwitchProfile = false
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 24) {
+                        // Profile Header
+                        VStack(spacing: 16) {
+                            Circle()
+                                .fill(account.color.gradient)
+                                .frame(width: 90, height: 90)
+                                .overlay {
+                                    Text(account.initials)
+                                        .font(.system(size: 34, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                                .shadow(color: account.color.opacity(0.4), radius: 16, x: 0, y: 6)
+
+                            Text(account.name)
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundStyle(Theme.textPrimary)
+                        }
+                        .padding(.top, 16)
+
+                        // Watch Stats
+                        VStack(alignment: .leading, spacing: 14) {
+                            SectionHeader(title: "Watch Stats", icon: "film")
+
+                            LazyVGrid(columns: [
+                                GridItem(.flexible()),
+                                GridItem(.flexible()),
+                            ], spacing: 12) {
+                                StatCard(
+                                    title: "Movies Watched",
+                                    value: "\(stats?.moviesWatched ?? 12)",
+                                    icon: "film.fill",
+                                    color: Theme.primaryGold
+                                )
+                                StatCard(
+                                    title: "Watch Time",
+                                    value: formatWatchTime(stats?.totalWatchTime ?? 43200),
+                                    icon: "clock.fill",
+                                    color: Theme.warmAmber
+                                )
+                                StatCard(
+                                    title: "Avg Rating",
+                                    value: String(format: "%.1f", stats?.averageRating ?? 8.2),
+                                    icon: "star.fill",
+                                    color: Color(hex: "#F59E0B")
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+
+                        // Listening Stats
+                        VStack(alignment: .leading, spacing: 14) {
+                            SectionHeader(title: "Listening Stats", icon: "music.note")
+
+                            LazyVGrid(columns: [
+                                GridItem(.flexible()),
+                                GridItem(.flexible()),
+                            ], spacing: 12) {
+                                StatCard(
+                                    title: "Tracks Played",
+                                    value: "\(stats?.tracksPlayed ?? 248)",
+                                    icon: "music.note.list",
+                                    color: Color(hex: "#A855F7")
+                                )
+                                StatCard(
+                                    title: "Listening Time",
+                                    value: formatWatchTime(stats?.listeningTime ?? 28800),
+                                    icon: "headphones",
+                                    color: Color(hex: "#EC4899")
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+
+                        // Reading Stats
+                        VStack(alignment: .leading, spacing: 14) {
+                            SectionHeader(title: "Reading Stats", icon: "book")
+
+                            LazyVGrid(columns: [
+                                GridItem(.flexible()),
+                                GridItem(.flexible()),
+                            ], spacing: 12) {
+                                StatCard(
+                                    title: "Books Read",
+                                    value: "\(stats?.booksRead ?? 5)",
+                                    icon: "book.fill",
+                                    color: Color(hex: "#14B8A6")
+                                )
+                                StatCard(
+                                    title: "Pages Read",
+                                    value: "\(stats?.pagesRead ?? 1420)",
+                                    icon: "doc.text.fill",
+                                    color: Color(hex: "#3B82F6")
+                                )
+                            }
+                        }
+                        .padding(.horizontal)
+
+                        // Favorite Genres
+                        VStack(alignment: .leading, spacing: 14) {
+                            SectionHeader(title: "Top Genres", icon: "chart.bar")
+
+                            let genres = stats?.favoriteGenres ?? ["Sci-Fi", "Drama", "Action", "Thriller", "Rock"]
+                            FlowLayout(spacing: 8) {
+                                ForEach(genres, id: \.self) { genre in
+                                    Text(genre)
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(Theme.primaryGold)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Theme.primaryGold.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
+
+                        // Actions
+                        VStack(spacing: 12) {
+                            ProfileActionButton(
+                                title: "Switch Profile",
+                                icon: "person.2",
+                                action: { showSwitchProfile = true }
+                            )
+
+                            ProfileActionButton(
+                                title: "Settings",
+                                icon: "gearshape",
+                                action: { showSettings = true }
+                            )
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 100)
+                    }
+                }
+            }
+            .navigationTitle("Profile")
+            .cinemateToolbarBackground(Theme.background)
+            .cinemateToolbarColorScheme(.dark)
+            .navigationDestination(isPresented: $showSettings) {
+                SettingsView()
+            }
+        }
+        .task {
+            await loadStats()
+        }
+    }
+
+    private func loadStats() async {
+        do {
+            stats = try await apiClient.getAccountStats(accountId: account.id)
+        } catch {
+            // Keep defaults
+        }
+    }
+
+    private func formatWatchTime(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds) / 3600
+        if hours >= 24 {
+            let days = hours / 24
+            return "\(days)d \(hours % 24)h"
+        }
+        return "\(hours)h"
+    }
+}
+
+struct SectionHeader: View {
+    let title: String
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.primaryGold)
+            Text(title)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+        }
+    }
+}
+
+struct StatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(color)
+                Spacer()
+            }
+
+            Text(value)
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .padding(14)
+        .background(Theme.cardSurface)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerMedium))
+    }
+}
+
+struct ProfileActionButton: View {
+    let title: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 17))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 28)
+
+                Text(title)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .padding()
+            .background(Theme.cardSurface)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerMedium))
+        }
+    }
+}
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = layout(proposal: proposal, subviews: subviews)
+        return result.size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = layout(proposal: proposal, subviews: subviews)
+        for (index, position) in result.positions.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y), proposal: .unspecified)
+        }
+    }
+
+    private func layout(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
+        let maxWidth = proposal.width ?? .infinity
+        var positions: [CGPoint] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth && x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            positions.append(CGPoint(x: x, y: y))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+            totalHeight = y + rowHeight
+        }
+
+        return (CGSize(width: maxWidth, height: totalHeight), positions)
+    }
+}
+
+#Preview {
+    ProfileView(account: Account.previewAccounts[0])
+        .environmentObject(APIClient())
+        .preferredColorScheme(.dark)
+}

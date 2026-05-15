@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Cinemate</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.maliq.cinemate</string>
+    <key>CFBundleName</key>
+    <string>Cinemate</string>
+    <key>CFBundleDisplayName</key>
+    <string>Cinemate</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticTermination</key>
+    <false/>
+    <key>CFBundleIconFile</key>
+    <string>Cinemate</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Cinemate uses your local network to discover and connect to media servers.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_cinemate._tcp</string>
+    </array>
+</dict>
+</plist>

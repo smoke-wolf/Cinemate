@@ -1,0 +1,30 @@
+appId: com.cinemate.desktop
+productName: Cinemate
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - node_modules/better-sqlite3/**/*
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+  icon: build/icon.icns
+linux:
+  target:
+    - AppImage
+  icon: build/icon.png

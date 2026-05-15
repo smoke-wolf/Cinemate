@@ -1,0 +1,12 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+aiosqlite>=0.20.0
+websockets>=12.0
+zeroconf>=0.131.0
+python-multipart>=0.0.9
+passlib[bcrypt]>=1.7.4
+bcrypt<4.1
+python-jose[cryptography]>=3.3.0
+mutagen>=1.47.0
+ebooklib>=0.18
+PyPDF2>=3.0.0
