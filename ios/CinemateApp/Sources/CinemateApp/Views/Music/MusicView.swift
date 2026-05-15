@@ -110,7 +110,7 @@ struct MusicView: View {
                             Text(artist.name)
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.textPrimary)
-                            Text("\(artist.albums.count) albums \u{2022} \(artist.trackCount) tracks")
+                            Text("\(artist.albumCount) albums \u{2022} \(artist.trackCount) tracks")
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.textSecondary)
                         }
@@ -211,8 +211,8 @@ struct MusicView: View {
         do {
             albums = try await apiClient.getAlbums()
             artists = try await apiClient.getArtists()
-            recentTracks = try await apiClient.getRecentTracks()
-            playlists = try await apiClient.getPlaylists()
+            recentTracks = try await apiClient.getRecentTracks(accountId: 0)
+            playlists = try await apiClient.getPlaylists(accountId: 0)
         } catch {
             // Keep preview data
         }

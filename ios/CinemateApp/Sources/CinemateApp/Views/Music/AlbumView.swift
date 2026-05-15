@@ -5,6 +5,8 @@ struct AlbumView: View {
     @EnvironmentObject var audioPlayer: AudioPlayer
     let album: MusicAlbum
 
+    @State private var tracks: [MusicTrack] = []
+
     var body: some View {
         ZStack {
             Theme.background.ignoresSafeArea()
@@ -39,7 +41,6 @@ struct AlbumView: View {
                                 Text("\u{2022} \(year)")
                             }
                             Text("\u{2022} \(album.trackCountDisplay)")
-                            Text("\u{2022} \(album.formattedDuration)")
                         }
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.textSecondary)
@@ -48,13 +49,13 @@ struct AlbumView: View {
                     // Action buttons
                     HStack(spacing: 16) {
                         GoldButton(title: "Play All", icon: "play.fill", action: {
-                            if let first = album.tracks.first {
-                                audioPlayer.playTrack(first, from: apiClient.baseURL, queue: album.tracks)
+                            if let first = tracks.first {
+                                audioPlayer.playTrack(first, from: apiClient.baseURL, queue: tracks)
                             }
                         })
 
                         SecondaryButton(title: "Shuffle", icon: "shuffle") {
-                            let shuffled = album.tracks.shuffled()
+                            let shuffled = tracks.shuffled()
                             if let first = shuffled.first {
                                 audioPlayer.playTrack(first, from: apiClient.baseURL, queue: shuffled)
                             }
@@ -63,12 +64,12 @@ struct AlbumView: View {
 
                     // Track list
                     VStack(spacing: 0) {
-                        ForEach(album.tracks) { track in
+                        ForEach(tracks) { track in
                             TrackRow(track: track) {
-                                audioPlayer.playTrack(track, from: apiClient.baseURL, queue: album.tracks)
+                                audioPlayer.playTrack(track, from: apiClient.baseURL, queue: tracks)
                             }
 
-                            if track.id != album.tracks.last?.id {
+                            if track.id != tracks.last?.id {
                                 Divider()
                                     .background(Theme.elevatedSurface)
                                     .padding(.leading, 82)
@@ -81,6 +82,11 @@ struct AlbumView: View {
         }
         .cinemateNavigationBarInline()
         .cinemateToolbarColorScheme(.dark)
+        .task {
+            do {
+                tracks = try await apiClient.getMusicTracks(album: album.name)
+            } catch {}
+        }
     }
 }
 

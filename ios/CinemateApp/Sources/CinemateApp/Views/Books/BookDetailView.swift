@@ -10,7 +10,7 @@ struct BookDetailView: View {
 
     init(book: Book) {
         self.book = book
-        _isFavorite = State(initialValue: book.isFavorite)
+        _isFavorite = State(initialValue: book.favorite)
     }
 
     var body: some View {
@@ -35,7 +35,7 @@ struct BookDetailView: View {
                                 .font(.system(size: 22, weight: .bold))
                                 .foregroundStyle(Theme.textPrimary)
 
-                            Text(book.author)
+                            Text(book.author ?? "Unknown Author")
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundStyle(Theme.primaryGold)
 
@@ -46,10 +46,10 @@ struct BookDetailView: View {
                             }
 
                             HStack(spacing: 12) {
-                                FormatBadge(format: book.format.rawValue)
+                                FormatBadge(format: book.format)
 
-                                if let pages = book.pageCount {
-                                    Text("\(pages) pages")
+                                if book.pageCount > 0 {
+                                    Text("\(book.pageCount) pages")
                                         .font(.system(size: 13))
                                         .foregroundStyle(Theme.textSecondary)
                                 }
@@ -70,7 +70,7 @@ struct BookDetailView: View {
                     .padding(.top, 16)
 
                     // Progress
-                    if book.progress > 0 && !book.isFinished {
+                    if book.progress > 0 && !book.finished {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text("Reading Progress")
@@ -136,46 +136,6 @@ struct BookDetailView: View {
                         .padding(.horizontal)
                     }
 
-                    // Bookmarks
-                    if !book.bookmarks.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Bookmarks")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(Theme.textPrimary)
-
-                            ForEach(book.bookmarks) { bookmark in
-                                HStack(spacing: 12) {
-                                    Image(systemName: "bookmark.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(Theme.primaryGold)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(bookmark.title ?? "Page \(bookmark.page)")
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundStyle(Theme.textPrimary)
-                                        Text("Page \(bookmark.page)")
-                                            .font(.system(size: 12))
-                                            .foregroundStyle(Theme.textTertiary)
-                                    }
-
-                                    Spacer()
-
-                                    Button(action: {
-                                        // Jump to page
-                                        showReader = true
-                                    }) {
-                                        Image(systemName: "arrow.right.circle")
-                                            .font(.system(size: 16))
-                                            .foregroundStyle(Theme.textSecondary)
-                                    }
-                                }
-                                .padding(12)
-                                .background(Theme.cardSurface)
-                                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
                 }
                 .padding(.bottom, 100)
             }

@@ -10,6 +10,7 @@ DB_DIR = Path.home() / ".cinemate"
 DB_PATH = DB_DIR / "cinemate.db"
 THUMBNAIL_DIR = DB_DIR / "thumbnails"
 ALBUM_ART_DIR = DB_DIR / "album_art"
+ARTIST_IMG_DIR = DB_DIR / "artist_images"
 BOOK_COVER_DIR = DB_DIR / "book_covers"
 CONFIG_PATH = DB_DIR / "config.json"
 
@@ -268,6 +269,25 @@ CREATE TABLE IF NOT EXISTS book_bookmarks (
     FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
 );
 
+-- Artist profile table (enriched from Spotify/Wikipedia)
+CREATE TABLE IF NOT EXISTS music_artists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    bio TEXT,
+    image_url TEXT,
+    image_path TEXT,
+    genres TEXT,
+    spotify_id TEXT,
+    popularity INTEGER,
+    followers INTEGER,
+    wikipedia_url TEXT,
+    enriched_at TEXT,
+    date_added TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_music_artists_name ON music_artists(name);
+CREATE INDEX IF NOT EXISTS idx_music_artists_spotify ON music_artists(spotify_id);
+
 CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
 CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
 CREATE INDEX IF NOT EXISTS idx_books_format ON books(format);
@@ -284,6 +304,7 @@ def ensure_dirs():
     DB_DIR.mkdir(parents=True, exist_ok=True)
     THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
     ALBUM_ART_DIR.mkdir(parents=True, exist_ok=True)
+    ARTIST_IMG_DIR.mkdir(parents=True, exist_ok=True)
     BOOK_COVER_DIR.mkdir(parents=True, exist_ok=True)
 
 

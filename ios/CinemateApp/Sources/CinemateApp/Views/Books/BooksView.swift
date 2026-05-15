@@ -28,9 +28,9 @@ struct BooksView: View {
         }
 
         switch sortOrder {
-        case .recent: return filtered.sorted { ($0.dateAdded ?? .distantPast) > ($1.dateAdded ?? .distantPast) }
+        case .recent: return filtered.sorted { ($0.dateAdded ?? "") > ($1.dateAdded ?? "") }
         case .title: return filtered.sorted { $0.title < $1.title }
-        case .author: return filtered.sorted { $0.author < $1.author }
+        case .author: return filtered.sorted { ($0.author ?? "") < ($1.author ?? "") }
         }
     }
 

@@ -163,7 +163,7 @@ struct ProfileView: View {
 
     private func loadStats() async {
         do {
-            stats = try await apiClient.getAccountStats(accountId: account.id)
+            stats = try await apiClient.getAccountStats(accountId: Int(account.id) ?? 0)
         } catch {
             // Keep defaults
         }

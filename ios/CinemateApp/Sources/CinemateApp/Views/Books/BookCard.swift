@@ -17,11 +17,11 @@ struct BookCard: View {
                     .shadow(color: .black.opacity(0.3), radius: 6, x: 2, y: 4)
 
                     // Format badge
-                    FormatBadge(format: book.format.rawValue)
+                    FormatBadge(format: book.format)
                         .padding(6)
 
                     // Finished overlay
-                    if book.isFinished {
+                    if book.finished {
                         VStack {
                             HStack {
                                 Image(systemName: "checkmark.circle.fill")
@@ -43,14 +43,14 @@ struct BookCard: View {
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(2)
 
-                    Text(book.author)
+                    Text(book.author ?? "Unknown")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
                 }
 
                 // Progress bar
-                if book.progress > 0 && !book.isFinished {
+                if book.progress > 0 && !book.finished {
                     VStack(alignment: .leading, spacing: 3) {
                         GoldProgressBar(progress: book.progress, height: 2)
                         Text("\(Int(book.progress * 100))%")

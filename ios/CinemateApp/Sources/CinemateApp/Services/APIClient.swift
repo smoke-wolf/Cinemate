@@ -91,35 +91,90 @@ final class APIClient: ObservableObject {
 
     // MARK: - Music
 
+    func getMusicTracks(search: String? = nil, artist: String? = nil, album: String? = nil) async throws -> [MusicTrack] {
+        var path = "/api/music/tracks?limit=500"
+        if let search { path += "&search=\(search.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
+        if let artist { path += "&artist=\(artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
+        if let album { path += "&album=\(album.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
+        let response: PaginatedResponse<MusicTrack> = try await get(path)
+        return response.items
+    }
+
     func getAlbums() async throws -> [MusicAlbum] {
-        try await get("/api/music/albums")
+        let response: PaginatedResponse<MusicAlbum> = try await get("/api/music/albums?limit=500")
+        return response.items
     }
 
     func getArtists() async throws -> [MusicArtist] {
-        try await get("/api/music/artists")
+        let response: PaginatedResponse<MusicArtist> = try await get("/api/music/artists?limit=500")
+        return response.items
     }
 
-    func getPlaylists() async throws -> [Playlist] {
-        try await get("/api/music/playlists")
+    func getArtistProfile(name: String) async throws -> ArtistProfile {
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        return try await get("/api/music/artists/\(encoded)/profile")
     }
 
-    func getRecentTracks() async throws -> [MusicTrack] {
-        try await get("/api/music/recent")
+    func artistImageURL(name: String) -> URL? {
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        return URL(string: "\(baseURL)/api/music/artists/\(encoded)/image")
+    }
+
+    func getPlaylists(accountId: Int) async throws -> [Playlist] {
+        try await get("/api/accounts/\(accountId)/playlists")
+    }
+
+    func getRecentTracks(accountId: Int) async throws -> [MusicTrack] {
+        try await get("/api/accounts/\(accountId)/music/recently-played")
+    }
+
+    func getMusicFavorites(accountId: Int) async throws -> [MusicTrack] {
+        try await get("/api/accounts/\(accountId)/music/favorites")
+    }
+
+    func toggleMusicFavorite(accountId: Int, trackId: Int) async throws {
+        try await post("/api/accounts/\(accountId)/music/favorites/\(trackId)", body: EmptyBody())
+    }
+
+    func streamURL(trackId: Int) -> URL? {
+        URL(string: "\(baseURL)/api/music/stream/\(trackId)")
+    }
+
+    func albumArtURL(albumId: Int) -> URL? {
+        URL(string: "\(baseURL)/api/music/art/\(albumId)")
     }
 
     // MARK: - Books
 
-    func getBooks() async throws -> [Book] {
-        try await get("/api/books")
+    func getBooks(search: String? = nil, format: String? = nil) async throws -> [Book] {
+        var path = "/api/books"
+        var params: [String] = []
+        if let search { params.append("search=\(search.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") }
+        if let format { params.append("format=\(format)") }
+        if !params.isEmpty { path += "?" + params.joined(separator: "&") }
+        return try await get(path) as [Book]
     }
 
-    func updateBookProgress(bookId: String, page: Int) async throws {
-        try await post("/api/books/\(bookId)/progress", body: ["page": page])
+    func getBookStats() async throws -> BookStats {
+        try await get("/api/books/stats")
     }
 
-    func addBookBookmark(bookId: String, page: Int, title: String?) async throws {
-        let body = BookmarkBody(page: page, title: title ?? "")
-        try await post("/api/books/\(bookId)/bookmarks", body: body)
+    func updateBookProgress(accountId: Int, bookId: Int, progress: Double, page: Int) async throws {
+        try await post("/api/books/accounts/\(accountId)/books/\(bookId)/progress",
+                       body: BookProgressBody(readingProgress: progress, currentPage: page))
+    }
+
+    func toggleBookFavorite(accountId: Int, bookId: Int) async throws {
+        try await post("/api/books/accounts/\(accountId)/books/\(bookId)/favorite", body: EmptyBody())
+    }
+
+    func addBookBookmark(accountId: Int, bookId: Int, page: Int, note: String?) async throws {
+        try await post("/api/books/accounts/\(accountId)/books/\(bookId)/bookmarks",
+                       body: BookmarkBody(page: page, title: note ?? ""))
+    }
+
+    func bookCoverURL(bookId: Int) -> URL? {
+        URL(string: "\(baseURL)/api/books/\(bookId)/cover")
     }
 
     // MARK: - Accounts
@@ -128,7 +183,7 @@ final class APIClient: ObservableObject {
         try await get("/api/accounts")
     }
 
-    func getAccountStats(accountId: String) async throws -> AccountStats {
+    func getAccountStats(accountId: Int) async throws -> AccountStats {
         try await get("/api/accounts/\(accountId)/stats")
     }
 
@@ -217,3 +272,39 @@ final class APIClient: ObservableObject {
 
 private struct EmptyBody: Encodable {}
 private struct BookmarkBody: Encodable { let page: Int; let title: String }
+private struct BookProgressBody: Encodable {
+    let readingProgress: Double
+    let currentPage: Int
+    enum CodingKeys: String, CodingKey {
+        case readingProgress = "reading_progress"
+        case currentPage = "current_page"
+    }
+}
+
+struct PaginatedResponse<T: Decodable>: Decodable {
+    let items: [T]
+    let total: Int
+    let limit: Int
+    let offset: Int
+}
+
+struct BookStats: Codable {
+    let totalBooks: Int
+    let totalAuthors: Int
+    let totalPages: Int
+    let totalSizeBytes: Int64
+    let formatBreakdown: [FormatCount]?
+
+    struct FormatCount: Codable {
+        let format: String
+        let count: Int
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case totalBooks = "total_books"
+        case totalAuthors = "total_authors"
+        case totalPages = "total_pages"
+        case totalSizeBytes = "total_size_bytes"
+        case formatBreakdown = "format_breakdown"
+    }
+}

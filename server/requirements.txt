@@ -10,3 +10,4 @@ python-jose[cryptography]>=3.3.0
 mutagen>=1.47.0
 ebooklib>=0.18
 PyPDF2>=3.0.0
+aiohttp>=3.9.0

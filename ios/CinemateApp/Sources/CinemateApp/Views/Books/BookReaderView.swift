@@ -26,7 +26,7 @@ struct BookReaderView: View {
             // PDF View
             #if os(iOS)
             PDFViewRepresentable(
-                url: book.fileURL.flatMap { apiClient.streamURL(for: $0) },
+                url: book.filePath.flatMap { apiClient.streamURL(for: $0) },
                 currentPage: $currentPage,
                 totalPages: $totalPages,
                 nightMode: nightMode
@@ -74,9 +74,10 @@ struct BookReaderView: View {
                             hapticImpact(.medium)
                             Task {
                                 try? await apiClient.addBookBookmark(
+                                    accountId: 0,
                                     bookId: book.id,
                                     page: currentPage,
-                                    title: nil
+                                    note: nil
                                 )
                             }
                         }) {
@@ -146,8 +147,9 @@ struct BookReaderView: View {
     }
 
     private func saveProgress() {
+        let progress = book.pageCount > 0 ? Double(currentPage) / Double(book.pageCount) : 0
         Task {
-            try? await apiClient.updateBookProgress(bookId: book.id, page: currentPage)
+            try? await apiClient.updateBookProgress(accountId: 0, bookId: book.id, progress: progress, page: currentPage)
         }
     }
 }

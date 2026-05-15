@@ -15,8 +15,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from database import get_db, ALBUM_ART_DIR
+from database import get_db, ALBUM_ART_DIR, ARTIST_IMG_DIR
 from music_scanner import scan_music_directory, music_scan_state
+from spotify_scraper import SpotifyScraper, enrich_library_genres
 
 logger = logging.getLogger("cinemate.music")
 
@@ -261,6 +262,257 @@ async def get_artist(name: str):
             "total_duration": sum(t.get("duration", 0) for t in tracks),
             "albums": list(albums.values()),
         }
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Artist enrichment state
+# ---------------------------------------------------------------------------
+
+_enrichment_running = False
+_genre_classify_running = False
+
+
+@router.get("/api/music/artists/{name}/profile")
+async def get_artist_profile(name: str):
+    """Return enriched artist profile, triggering enrichment if stale or missing."""
+    db = await get_db()
+    try:
+        # Check for cached profile in music_artists table
+        cursor = await db.execute(
+            "SELECT * FROM music_artists WHERE name = ?", (name,)
+        )
+        artist_row = await cursor.fetchone()
+
+        profile = None
+        needs_enrichment = True
+
+        if artist_row:
+            profile = row_to_dict(artist_row)
+            # Parse genres from comma-separated string to list
+            if profile.get("genres"):
+                profile["genres"] = [
+                    g.strip() for g in profile["genres"].split(",")
+                ]
+            else:
+                profile["genres"] = []
+            # Check staleness — enriched_at older than 7 days
+            if profile.get("enriched_at"):
+                enriched_dt = datetime.fromisoformat(profile["enriched_at"])
+                age_days = (datetime.utcnow() - enriched_dt).days
+                if age_days < 7:
+                    needs_enrichment = False
+
+        if needs_enrichment:
+            scraper = SpotifyScraper()
+            enriched = await scraper.enrich_artist(name)
+            if enriched:
+                genres_str = enriched.get("genres") or ""
+                now = datetime.utcnow().isoformat()
+                if artist_row:
+                    await db.execute(
+                        """UPDATE music_artists
+                           SET bio = ?, image_url = ?, genres = ?,
+                               spotify_id = ?, popularity = ?, followers = ?,
+                               wikipedia_url = ?, enriched_at = ?
+                           WHERE name = ?""",
+                        (
+                            enriched.get("bio"),
+                            enriched.get("image_url"),
+                            genres_str,
+                            enriched.get("spotify_id"),
+                            enriched.get("popularity"),
+                            enriched.get("followers"),
+                            enriched.get("wikipedia_url"),
+                            now,
+                            name,
+                        ),
+                    )
+                else:
+                    await db.execute(
+                        """INSERT INTO music_artists
+                           (name, bio, image_url, genres, spotify_id,
+                            popularity, followers, wikipedia_url, enriched_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            name,
+                            enriched.get("bio"),
+                            enriched.get("image_url"),
+                            genres_str,
+                            enriched.get("spotify_id"),
+                            enriched.get("popularity"),
+                            enriched.get("followers"),
+                            enriched.get("wikipedia_url"),
+                            now,
+                        ),
+                    )
+                await db.commit()
+                genres_list = [g.strip() for g in genres_str.split(",") if g.strip()] if genres_str else []
+                profile = {
+                    "name": name,
+                    "bio": enriched.get("bio"),
+                    "image_url": enriched.get("image_url"),
+                    "genres": genres_list,
+                    "spotify_id": enriched.get("spotify_id"),
+                    "popularity": enriched.get("popularity"),
+                    "followers": enriched.get("followers"),
+                    "wikipedia_url": enriched.get("wikipedia_url"),
+                }
+            elif not profile:
+                # No cached data and enrichment returned nothing —
+                # verify the artist at least exists in the library
+                cursor = await db.execute(
+                    "SELECT COUNT(*) as cnt FROM music_tracks WHERE artist = ?",
+                    (name,),
+                )
+                if (await cursor.fetchone())["cnt"] == 0:
+                    raise HTTPException(404, "Artist not found")
+                profile = {"name": name, "genres": []}
+
+        # Aggregate track/album counts from library
+        cursor = await db.execute(
+            """SELECT COUNT(*) as track_count,
+                      COUNT(DISTINCT album) as album_count
+               FROM music_tracks WHERE artist = ?""",
+            (name,),
+        )
+        counts = row_to_dict(await cursor.fetchone())
+        profile["track_count"] = counts["track_count"]
+        profile["album_count"] = counts["album_count"]
+
+        return profile
+    finally:
+        await db.close()
+
+
+@router.post("/api/music/artists/enrich-all")
+async def enrich_all_artists():
+    """Trigger background enrichment of all artists in the library."""
+    global _enrichment_running
+    if _enrichment_running:
+        raise HTTPException(409, "Artist enrichment already in progress")
+
+    async def _enrich_all_bg():
+        global _enrichment_running
+        _enrichment_running = True
+        try:
+            db = await get_db()
+            try:
+                cursor = await db.execute(
+                    "SELECT DISTINCT artist FROM music_tracks ORDER BY artist"
+                )
+                rows = await cursor.fetchall()
+            finally:
+                await db.close()
+
+            scraper = SpotifyScraper()
+            enriched_count = 0
+            for row in rows:
+                artist_name = row["artist"]
+                try:
+                    enriched = await scraper.enrich_artist(artist_name)
+                    if enriched:
+                        db = await get_db()
+                        try:
+                            genres_str = enriched.get("genres") or ""
+                            now = datetime.utcnow().isoformat()
+                            await db.execute(
+                                """INSERT INTO music_artists
+                                   (name, bio, image_url, genres, spotify_id,
+                                    popularity, followers, wikipedia_url, enriched_at)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   ON CONFLICT(name) DO UPDATE SET
+                                    bio = excluded.bio,
+                                    image_url = excluded.image_url,
+                                    genres = excluded.genres,
+                                    spotify_id = excluded.spotify_id,
+                                    popularity = excluded.popularity,
+                                    followers = excluded.followers,
+                                    wikipedia_url = excluded.wikipedia_url,
+                                    enriched_at = excluded.enriched_at""",
+                                (
+                                    artist_name,
+                                    enriched.get("bio"),
+                                    enriched.get("image_url"),
+                                    genres_str,
+                                    enriched.get("spotify_id"),
+                                    enriched.get("popularity"),
+                                    enriched.get("followers"),
+                                    enriched.get("wikipedia_url"),
+                                    now,
+                                ),
+                            )
+                            await db.commit()
+                            enriched_count += 1
+                        finally:
+                            await db.close()
+                    # Rate limit — avoid hammering Spotify
+                    await asyncio.sleep(1.0)
+                except Exception:
+                    logger.exception("Failed to enrich artist: %s", artist_name)
+            logger.info(
+                "Artist enrichment complete: %d/%d enriched",
+                enriched_count,
+                len(rows),
+            )
+        except Exception:
+            logger.exception("Background artist enrichment failed")
+        finally:
+            _enrichment_running = False
+
+    asyncio.create_task(_enrich_all_bg())
+    return {"status": "enrichment_started"}
+
+
+@router.post("/api/music/genres/classify")
+async def classify_genres():
+    """Trigger background genre backfill for tracks with NULL genre."""
+    global _genre_classify_running
+    if _genre_classify_running:
+        raise HTTPException(409, "Genre classification already in progress")
+
+    async def _classify_genres_bg():
+        global _genre_classify_running
+        _genre_classify_running = True
+        try:
+            db = await get_db()
+            try:
+                result = await enrich_library_genres(db)
+                await db.commit()
+                logger.info("Genre classification complete: %s", result)
+            finally:
+                await db.close()
+        except Exception:
+            logger.exception("Background genre classification failed")
+        finally:
+            _genre_classify_running = False
+
+    asyncio.create_task(_classify_genres_bg())
+    return {"status": "genre_classification_started"}
+
+
+@router.get("/api/music/artists/{name}/image")
+async def get_artist_image(name: str):
+    """Serve cached artist image from disk."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT image_path FROM music_artists WHERE name = ?", (name,)
+        )
+        row = await cursor.fetchone()
+        if not row or not row["image_path"]:
+            raise HTTPException(404, "Artist image not found")
+
+        image_path = Path(row["image_path"])
+        # Support both absolute paths and paths relative to ARTIST_IMG_DIR
+        if not image_path.is_absolute():
+            image_path = ARTIST_IMG_DIR / image_path
+
+        if not image_path.is_file():
+            raise HTTPException(404, "Artist image file missing")
+
+        return FileResponse(str(image_path))
     finally:
         await db.close()
 
