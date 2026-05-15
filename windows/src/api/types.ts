@@ -194,7 +194,29 @@ export interface MusicStats {
 
 // ─── App State ───
 export type AppScreen = 'splash' | 'server' | 'accounts' | 'main';
-export type MainTab = 'browse' | 'tvshows' | 'music' | 'favorites' | 'recent' | 'profile' | 'admin';
+export type MainTab = 'browse' | 'tvshows' | 'music' | 'books' | 'favorites' | 'recent' | 'profile' | 'admin';
+
+// ─── Books ───
+export interface BookItem {
+  id: number;
+  title: string;
+  author: string | null;
+  genre: string | null;
+  publisher: string | null;
+  language: string | null;
+  description: string | null;
+  page_count: number;
+  format: string;
+  file_path: string;
+  file_size: number;
+  cover_path: string | null;
+  year: number | null;
+  date_added: string;
+  reading_progress: number;
+  current_page: number;
+  favorite: boolean;
+  finished: boolean;
+}
 export type SortOption = 'title' | 'year' | 'date_added' | 'last_played' | 'file_size';
 export type QualityFilter = 'all' | '4k' | '1080p' | '720p';
 

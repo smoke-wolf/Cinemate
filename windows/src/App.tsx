@@ -33,6 +33,7 @@ import ProfileView from './components/ProfileView';
 import LANAdmin from './components/LANAdmin';
 import MusicView from './components/MusicView';
 import MusicPlayer from './components/MusicPlayer';
+import BooksView from './components/BooksView';
 
 export default function App() {
   // ─── Screen state ───
@@ -524,6 +525,9 @@ export default function App() {
                     {activeTab === 'music' && (
                       <MusicView onPlayTrack={musicPlayTrack} />
                     )}
+
+                    {/* Books tab */}
+                    {activeTab === 'books' && <BooksView />}
 
                     {/* Favorites tab */}
                     {activeTab === 'favorites' && (

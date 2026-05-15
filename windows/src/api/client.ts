@@ -14,6 +14,7 @@ import type {
   MusicGenre,
   MusicStats,
   Playlist,
+  BookItem,
 } from './types';
 
 class CinemateAPI {
@@ -333,6 +334,45 @@ class CinemateAPI {
       method: 'PUT',
       body: JSON.stringify({ track_ids: trackIds }),
     });
+  }
+
+  // ─── Books ───
+
+  async getBooks(params?: { sort?: string; search?: string; format?: string }): Promise<BookItem[]> {
+    const q = new URLSearchParams();
+    if (params?.sort) q.set('sort', params.sort);
+    if (params?.search) q.set('search', params.search);
+    if (params?.format) q.set('format', params.format);
+    const qs = q.toString();
+    return this.request<BookItem[]>(`/api/books${qs ? '?' + qs : ''}`);
+  }
+
+  async getBookStats(): Promise<{ total_books: number; total_authors: number; format_breakdown: { format: string; count: number }[] }> {
+    return this.request(`/api/books/stats`);
+  }
+
+  bookCoverUrl(bookId: number): string {
+    return `${this.baseUrl}/api/books/${bookId}/cover`;
+  }
+
+  async toggleBookFavorite(accountId: number, bookId: number): Promise<void> {
+    await this.request(`/api/books/accounts/${accountId}/books/${bookId}/favorite`, { method: 'POST' });
+  }
+
+  async markBookFinished(accountId: number, bookId: number): Promise<void> {
+    await this.request(`/api/books/accounts/${accountId}/books/${bookId}/finished`, { method: 'POST' });
+  }
+
+  async getCurrentlyReading(accountId: number): Promise<BookItem[]> {
+    return this.request<BookItem[]>(`/api/books/accounts/${accountId}/books/currently-reading`);
+  }
+
+  async getFinishedBooks(accountId: number): Promise<BookItem[]> {
+    return this.request<BookItem[]>(`/api/books/accounts/${accountId}/books/finished`);
+  }
+
+  async getBookAuthors(): Promise<{ name: string; book_count: number }[]> {
+    return this.request(`/api/books/authors`);
   }
 }
 
