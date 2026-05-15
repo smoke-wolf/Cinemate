@@ -130,9 +130,71 @@ export interface LibraryStats {
   favorite_genres: string[];
 }
 
+// ─── Music ───
+export interface MusicTrack {
+  id: number;
+  title: string;
+  artist: string;
+  album: string;
+  album_id?: number;
+  genre?: string;
+  duration: number;
+  track_number?: number;
+  disc_number?: number;
+  year?: number;
+  format?: string;
+  bitrate?: number;
+  sample_rate?: number;
+  file_path?: string;
+  date_added?: string;
+}
+
+export interface MusicAlbum {
+  id: number;
+  name: string;
+  artist: string;
+  year?: number;
+  genre?: string;
+  track_count?: number;
+  total_duration?: number;
+  tracks?: MusicTrack[];
+}
+
+export interface MusicArtist {
+  artist: string;
+  track_count: number;
+  album_count: number;
+  total_duration: number;
+  albums?: { name: string; album_id: number; year?: number; tracks?: number }[];
+}
+
+export interface Playlist {
+  id: number;
+  account_id: number;
+  name: string;
+  description?: string;
+  track_count?: number;
+  created_at?: string;
+  updated_at?: string;
+  tracks?: MusicTrack[];
+}
+
+export interface MusicGenre {
+  genre: string;
+  count: number;
+}
+
+export interface MusicStats {
+  total_tracks: number;
+  total_albums: number;
+  total_artists: number;
+  total_duration: number;
+  format_breakdown?: { format: string; count: number }[];
+}
+
 // ─── App State ───
 export type AppScreen = 'splash' | 'server' | 'accounts' | 'main';
-export type MainTab = 'browse' | 'tvshows' | 'favorites' | 'recent' | 'profile' | 'admin';
+export type MainTab = 'browse' | 'tvshows' | 'music' | 'favorites' | 'recent' | 'profile' | 'admin';
 export type SortOption = 'title' | 'year' | 'date_added' | 'last_played' | 'file_size';
 export type QualityFilter = 'all' | '4k' | '1080p' | '720p';
 

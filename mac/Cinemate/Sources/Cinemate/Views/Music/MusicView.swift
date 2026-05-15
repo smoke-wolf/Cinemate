@@ -26,6 +26,10 @@ struct MusicView: View {
                         }
                         ArtistView(artist: artist, viewModel: viewModel)
                     }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
                 } else if let album = viewModel.selectedAlbum {
                     VStack(spacing: 0) {
                         detailBackBar(title: album.name) {
@@ -33,6 +37,10 @@ struct MusicView: View {
                         }
                         AlbumView(album: album, viewModel: viewModel)
                     }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
                 } else if let playlistIndex = viewModel.playlists.firstIndex(where: { $0.id == viewModel.selectedPlaylist?.id }) {
                     VStack(spacing: 0) {
                         detailBackBar(title: viewModel.playlists[playlistIndex].name) {
@@ -40,6 +48,10 @@ struct MusicView: View {
                         }
                         PlaylistView(playlist: $viewModel.playlists[playlistIndex], viewModel: viewModel)
                     }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
                 } else if viewModel.isLoading && viewModel.tracks.isEmpty {
                     VStack(spacing: 16) {
                         ProgressView()
@@ -88,6 +100,9 @@ struct MusicView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.easeInOut(duration: 0.25), value: viewModel.selectedArtist?.id)
+            .animation(.easeInOut(duration: 0.25), value: viewModel.selectedAlbum?.id)
+            .animation(.easeInOut(duration: 0.25), value: viewModel.selectedPlaylist?.id)
 
             // Now playing bar
             NowPlayingBar(viewModel: viewModel)
@@ -124,6 +139,12 @@ struct MusicView: View {
             // Cmd+F — focus search
             if flags == .command && event.charactersIgnoringModifiers == "f" {
                 isSearchFocused = true
+                return nil
+            }
+
+            // Cmd+L — scroll to now playing
+            if flags == .command && event.charactersIgnoringModifiers == "l" {
+                viewModel.scrollToNowPlayingTrigger += 1
                 return nil
             }
 
@@ -272,47 +293,56 @@ struct MusicView: View {
                 // Search results as a track list
                 searchResultsView
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 32) {
-                        // Library stats header
-                        libraryStatsHeader
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 32) {
+                            // Library stats header
+                            libraryStatsHeader
 
-                        // Recently Played row
-                        if !viewModel.recentlyPlayed.isEmpty {
-                            musicRow(
-                                title: "Recently Played",
-                                albums: albumsFromTracks(viewModel.recentlyPlayed)
-                            )
+                            // Recently Played row
+                            if !viewModel.recentlyPlayed.isEmpty {
+                                musicRow(
+                                    title: "Recently Played",
+                                    albums: albumsFromTracks(viewModel.recentlyPlayed)
+                                )
+                            }
+
+                            // Favorites row
+                            if !viewModel.favoriteTracks.isEmpty {
+                                musicRow(
+                                    title: "Favorites",
+                                    albums: albumsFromTracks(viewModel.favoriteTracks)
+                                )
+                            }
+
+                            // Recently Added row
+                            if !viewModel.recentlyAddedTracks.isEmpty {
+                                recentlyAddedSection
+                            }
+
+                            // Genre rows
+                            ForEach(viewModel.genreAlbums, id: \.genre) { row in
+                                musicRow(title: row.genre, albums: row.albums)
+                            }
+
+                            // Albums (skip if only "Unknown Album")
+                            let realAlbums = viewModel.albums.filter { $0.name != "Unknown Album" }
+                            if !realAlbums.isEmpty {
+                                musicRow(title: "Albums", albums: realAlbums)
+                            }
+
+                            // All Tracks list
+                            allTracksSection
                         }
-
-                        // Favorites row
-                        if !viewModel.favoriteTracks.isEmpty {
-                            musicRow(
-                                title: "Favorites",
-                                albums: albumsFromTracks(viewModel.favoriteTracks)
-                            )
-                        }
-
-                        // Recently Added row
-                        if !viewModel.recentlyAddedTracks.isEmpty {
-                            recentlyAddedSection
-                        }
-
-                        // Genre rows
-                        ForEach(viewModel.genreAlbums, id: \.genre) { row in
-                            musicRow(title: row.genre, albums: row.albums)
-                        }
-
-                        // Albums (skip if only "Unknown Album")
-                        let realAlbums = viewModel.albums.filter { $0.name != "Unknown Album" }
-                        if !realAlbums.isEmpty {
-                            musicRow(title: "Albums", albums: realAlbums)
-                        }
-
-                        // All Tracks list
-                        allTracksSection
+                        .padding(.vertical, 24)
                     }
-                    .padding(.vertical, 24)
+                    .onChange(of: viewModel.scrollToNowPlayingTrigger) {
+                        if let trackId = viewModel.nowPlaying.currentTrack?.id {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo(trackId, anchor: .center)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -404,6 +434,7 @@ struct MusicView: View {
                     playlists: viewModel.playlists,
                     onAddToPlaylist: { playlistId in viewModel.addToPlaylist(playlistId, track: track) }
                 )
+                .id(track.id)
                 .padding(.horizontal, 12)
             }
         }
@@ -659,45 +690,9 @@ struct MusicView: View {
     }
 
     private func artistGridItem(_ artist: MusicArtist) -> some View {
-        VStack(spacing: 10) {
-            // Artist circle avatar
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(white: 0.2), Color(white: 0.13)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .aspectRatio(1, contentMode: .fit)
-
-                // If first album has art, show it in circle
-                if let artPath = artist.albums.first?.artPath,
-                   let image = NSImage(contentsOfFile: artPath) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .clipShape(Circle())
-                } else {
-                    Image(systemName: "music.mic")
-                        .font(.system(size: 28))
-                        .foregroundColor(.gray.opacity(0.5))
-                }
-            }
-            .clipShape(Circle())
-
-            Text(artist.name)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white)
-                .lineLimit(1)
-
-            Text("\(artist.albumCount) album\(artist.albumCount == 1 ? "" : "s")")
-                .font(.system(size: 12))
-                .foregroundColor(.gray)
+        ArtistGridItemView(artist: artist) {
+            viewModel.selectedArtist = artist
         }
-        .contentShape(Rectangle())
-        .onTapGesture { viewModel.selectedArtist = artist }
     }
 
     // MARK: - Albums Grid
@@ -731,6 +726,10 @@ struct MusicView: View {
     }
 
     // MARK: - Playlists Grid
+
+    @State private var playlistToRename: Playlist?
+    @State private var playlistRenameText: String = ""
+    @State private var playlistToDelete: Playlist?
 
     private var playlistsGrid: some View {
         Group {
@@ -774,12 +773,71 @@ struct MusicView: View {
                                     onTap: { viewModel.selectedPlaylist = playlist },
                                     onPlay: { viewModel.playTracks(playlist.tracks) }
                                 )
+                                .contextMenu {
+                                    Button(action: { viewModel.playTracks(playlist.tracks) }) {
+                                        Label("Play", systemImage: "play.fill")
+                                    }
+
+                                    Button(action: {
+                                        var shuffled = playlist.tracks
+                                        shuffled.shuffle()
+                                        viewModel.playTracks(shuffled)
+                                    }) {
+                                        Label("Shuffle", systemImage: "shuffle")
+                                    }
+
+                                    Divider()
+
+                                    Button(action: {
+                                        playlistRenameText = playlist.name
+                                        playlistToRename = playlist
+                                    }) {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+
+                                    Divider()
+
+                                    Button(role: .destructive, action: {
+                                        playlistToDelete = playlist
+                                    }) {
+                                        Label("Delete Playlist", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 24)
                         .padding(.bottom, 24)
                     }
                 }
+            }
+            .alert("Rename Playlist", isPresented: Binding(
+                get: { playlistToRename != nil },
+                set: { if !$0 { playlistToRename = nil } }
+            )) {
+                TextField("Playlist name", text: $playlistRenameText)
+                Button("Cancel", role: .cancel) { playlistToRename = nil }
+                Button("Rename") {
+                    if let id = playlistToRename?.id,
+                       let index = viewModel.playlists.firstIndex(where: { $0.id == id }) {
+                        viewModel.playlists[index].name = playlistRenameText
+                        viewModel.savePlaylistEdits()
+                    }
+                    playlistToRename = nil
+                }
+            }
+            .alert("Delete Playlist", isPresented: Binding(
+                get: { playlistToDelete != nil },
+                set: { if !$0 { playlistToDelete = nil } }
+            )) {
+                Button("Cancel", role: .cancel) { playlistToDelete = nil }
+                Button("Delete", role: .destructive) {
+                    if let id = playlistToDelete?.id {
+                        viewModel.deletePlaylist(id)
+                    }
+                    playlistToDelete = nil
+                }
+            } message: {
+                Text("Are you sure you want to delete \"\(playlistToDelete?.name ?? "")\"? This cannot be undone.")
             }
         }
     }
@@ -839,5 +897,68 @@ struct MusicView: View {
             }
         }
         return result
+    }
+}
+
+// MARK: - Artist Grid Item (extracted for hover state)
+
+private struct ArtistGridItemView: View {
+    let artist: MusicArtist
+    let onTap: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            // Artist circle avatar
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(white: 0.2), Color(white: 0.13)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .aspectRatio(1, contentMode: .fit)
+
+                // If first album has art, show it in circle
+                if let artPath = artist.albums.first?.artPath,
+                   let image = NSImage(contentsOfFile: artPath) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .clipShape(Circle())
+                } else {
+                    Image(systemName: "music.mic")
+                        .font(.system(size: 28))
+                        .foregroundColor(.gray.opacity(0.5))
+                }
+            }
+            .clipShape(Circle())
+            .shadow(
+                color: .black.opacity(isHovered ? 0.5 : 0.2),
+                radius: isHovered ? 10 : 4,
+                y: isHovered ? 4 : 2
+            )
+
+            Text(artist.name)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white)
+                .lineLimit(1)
+
+            Text("\(artist.trackCount) track\(artist.trackCount == 1 ? "" : "s") \u{2022} \(artist.albumCount) album\(artist.albumCount == 1 ? "" : "s")")
+                .font(.system(size: 12))
+                .foregroundColor(.gray)
+        }
+        .scaleEffect(isHovered ? 1.04 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
+        .contentShape(Rectangle())
+        .onTapGesture { onTap() }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
     }
 }

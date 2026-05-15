@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import type {
   AppScreen,
@@ -11,6 +11,7 @@ import type {
   WatchHistory,
   Favorite,
   ServerConnection,
+  MusicTrack,
 } from './api/types';
 import { api } from './api/client';
 import * as localDb from './db/local';
@@ -30,6 +31,8 @@ import VideoPlayer from './components/VideoPlayer';
 import TVShowsView from './components/TVShowsView';
 import ProfileView from './components/ProfileView';
 import LANAdmin from './components/LANAdmin';
+import MusicView from './components/MusicView';
+import MusicPlayer from './components/MusicPlayer';
 
 export default function App() {
   // ─── Screen state ───
@@ -57,6 +60,15 @@ export default function App() {
   const [qualityFilter, setQualityFilter] = useState<QualityFilter>('all');
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [playingMovie, setPlayingMovie] = useState<Movie | null>(null);
+
+  // ─── Music state ───
+  const [musicTrackCount, setMusicTrackCount] = useState(0);
+  const [musicCurrentTrack, setMusicCurrentTrack] = useState<MusicTrack | null>(null);
+  const [musicQueue, setMusicQueue] = useState<MusicTrack[]>([]);
+  const [musicQueueIndex, setMusicQueueIndex] = useState(0);
+  const [musicIsPlaying, setMusicIsPlaying] = useState(false);
+  const [showMusicQueue, setShowMusicQueue] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // ─── Data loading ───
 
@@ -178,6 +190,84 @@ export default function App() {
     } catch {}
   }, [isOnline, loadMovies, loadTVShows]);
 
+  // ─── Music loading ───
+  const loadMusicStats = useCallback(async () => {
+    if (!isOnline) return;
+    try {
+      const stats = await api.getMusicStats();
+      setMusicTrackCount(stats.total_tracks);
+    } catch {
+      setMusicTrackCount(0);
+    }
+  }, [isOnline]);
+
+  // Music player controls
+  const musicPlayTrack = useCallback((track: MusicTrack, queue?: MusicTrack[]) => {
+    const q = queue || [track];
+    const idx = q.findIndex((t) => t.id === track.id);
+    setMusicQueue(q);
+    setMusicQueueIndex(idx >= 0 ? idx : 0);
+    setMusicCurrentTrack(track);
+    setMusicIsPlaying(true);
+
+    // Set audio src and play
+    if (audioRef.current) {
+      audioRef.current.src = api.getMusicStreamUrl(track.id);
+      audioRef.current.play().catch(() => {});
+    }
+  }, []);
+
+  const musicTogglePlayPause = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || !musicCurrentTrack) return;
+    if (audio.paused) {
+      audio.play().catch(() => {});
+      setMusicIsPlaying(true);
+    } else {
+      audio.pause();
+      setMusicIsPlaying(false);
+    }
+  }, [musicCurrentTrack]);
+
+  const musicPlayNext = useCallback(() => {
+    if (musicQueue.length === 0) return;
+    const nextIdx = (musicQueueIndex + 1) % musicQueue.length;
+    const nextTrack = musicQueue[nextIdx];
+    setMusicQueueIndex(nextIdx);
+    setMusicCurrentTrack(nextTrack);
+    setMusicIsPlaying(true);
+    if (audioRef.current) {
+      audioRef.current.src = api.getMusicStreamUrl(nextTrack.id);
+      audioRef.current.play().catch(() => {});
+    }
+  }, [musicQueue, musicQueueIndex]);
+
+  const musicPlayPrev = useCallback(() => {
+    if (musicQueue.length === 0) return;
+    // If more than 3s in, restart current track
+    if (audioRef.current && audioRef.current.currentTime > 3) {
+      audioRef.current.currentTime = 0;
+      return;
+    }
+    const prevIdx = (musicQueueIndex - 1 + musicQueue.length) % musicQueue.length;
+    const prevTrack = musicQueue[prevIdx];
+    setMusicQueueIndex(prevIdx);
+    setMusicCurrentTrack(prevTrack);
+    setMusicIsPlaying(true);
+    if (audioRef.current) {
+      audioRef.current.src = api.getMusicStreamUrl(prevTrack.id);
+      audioRef.current.play().catch(() => {});
+    }
+  }, [musicQueue, musicQueueIndex]);
+
+  const musicOnTrackEnd = useCallback(() => {
+    musicPlayNext();
+  }, [musicPlayNext]);
+
+  const musicOnTimeUpdate = useCallback((_currentTime: number, _duration: number) => {
+    // Placeholder for future use (scrobbling, etc.)
+  }, []);
+
   // Load data when account is selected
   useEffect(() => {
     if (screen === 'main' && currentAccount) {
@@ -185,6 +275,7 @@ export default function App() {
       loadTVShows();
       loadWatchHistory();
       loadFavorites();
+      loadMusicStats();
     }
   }, [screen, currentAccount]);
 
@@ -317,13 +408,14 @@ export default function App() {
       setSelectedMovie,
       playingMovie,
       setPlayingMovie,
+      musicTrackCount,
     }),
     [
       sortedFilteredMovies, tvShows, watchHistory, favorites,
       activeTab, sortBy, qualityFilter,
       loadMovies, loadTVShows, loadWatchHistory, loadFavorites,
       toggleFavoriteFn, updateProgressFn, scanFolderFn,
-      selectedMovie, playingMovie,
+      selectedMovie, playingMovie, musicTrackCount,
     ]
   );
 
@@ -428,6 +520,11 @@ export default function App() {
                     {/* TV Shows tab */}
                     {activeTab === 'tvshows' && <TVShowsView />}
 
+                    {/* Music tab */}
+                    {activeTab === 'music' && (
+                      <MusicView onPlayTrack={musicPlayTrack} />
+                    )}
+
                     {/* Favorites tab */}
                     {activeTab === 'favorites' && (
                       <div className="h-full overflow-y-auto p-6">
@@ -497,6 +594,29 @@ export default function App() {
                     loadWatchHistory();
                   }}
                   initialProgress={progressMap.get(playingMovie.id)}
+                />
+              )}
+            </AnimatePresence>
+
+            {/* Hidden audio element for music playback */}
+            <audio ref={audioRef} preload="auto" />
+
+            {/* Music player bar (global, fixed bottom) */}
+            <AnimatePresence>
+              {musicCurrentTrack && (
+                <MusicPlayer
+                  currentTrack={musicCurrentTrack}
+                  queue={musicQueue}
+                  queueIndex={musicQueueIndex}
+                  isPlaying={musicIsPlaying}
+                  onPlayPause={musicTogglePlayPause}
+                  onNext={musicPlayNext}
+                  onPrev={musicPlayPrev}
+                  onTrackEnd={musicOnTrackEnd}
+                  onTimeUpdate={musicOnTimeUpdate}
+                  audioRef={audioRef}
+                  showQueue={showMusicQueue}
+                  onToggleQueue={() => setShowMusicQueue((v) => !v)}
                 />
               )}
             </AnimatePresence>

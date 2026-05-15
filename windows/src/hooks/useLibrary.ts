@@ -31,6 +31,7 @@ export interface LibraryContextType {
   setSelectedMovie: (movie: Movie | null) => void;
   playingMovie: Movie | null;
   setPlayingMovie: (movie: Movie | null) => void;
+  musicTrackCount: number;
 }
 
 export const LibraryContext = createContext<LibraryContextType>({
@@ -55,6 +56,7 @@ export const LibraryContext = createContext<LibraryContextType>({
   setSelectedMovie: () => {},
   playingMovie: null,
   setPlayingMovie: () => {},
+  musicTrackCount: 0,
 });
 
 export function useLibrary() {

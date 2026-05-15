@@ -77,11 +77,14 @@ struct BookReaderView: View {
 
     @State private var currentPage: Int = 1
     @State private var totalPages: Int = 0
-    @State private var nightMode: Bool = false
+    @State private var nightMode: Bool = true
     @State private var pdfView: PDFView? = nil
     @State private var showBookmarkDialog = false
     @State private var bookmarkNote: String = ""
     @State private var lastSaveTime = Date()
+    @State private var isBookmarked: Bool = false
+
+    private let goldAccent = Color(red: 0.95, green: 0.8, blue: 0.2)
 
     var body: some View {
         if book.format == "PDF" {

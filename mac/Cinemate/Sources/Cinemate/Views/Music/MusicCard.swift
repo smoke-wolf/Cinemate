@@ -118,13 +118,25 @@ struct AlbumCard: View {
     let onPlay: () -> Void
 
     var body: some View {
-        MusicCard(
-            title: album.name,
-            subtitle: album.artist,
-            artPath: album.artPath,
-            onTap: onTap,
-            onPlay: onPlay
-        )
+        ZStack(alignment: .topTrailing) {
+            MusicCard(
+                title: album.name,
+                subtitle: album.artist,
+                artPath: album.artPath,
+                onTap: onTap,
+                onPlay: onPlay
+            )
+
+            // Track count badge
+            Text("\(album.trackCount)")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.black.opacity(0.6))
+                .clipShape(Capsule())
+                .padding(6)
+        }
     }
 }
 

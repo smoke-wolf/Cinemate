@@ -152,8 +152,16 @@ struct TrackRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+            HStack(spacing: 0) {
+                if isCurrentlyPlaying {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(goldAccent)
+                        .frame(width: 3)
+                        .padding(.vertical, 4)
+                }
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isCurrentlyPlaying ? goldAccent.opacity(0.08) : (isHovered ? Color.white.opacity(0.06) : Color.clear))
+            }
         )
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { onPlay() }

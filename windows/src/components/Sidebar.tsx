@@ -23,6 +23,15 @@ const NAV_ITEMS: { tab: MainTab; label: string; icon: React.ReactNode }[] = [
     ),
   },
   {
+    tab: 'music',
+    label: 'Music',
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+      </svg>
+    ),
+  },
+  {
     tab: 'favorites',
     label: 'Favorites',
     icon: (
@@ -82,6 +91,7 @@ export default function Sidebar() {
     qualityFilter, setQualityFilter,
     movies, tvShows, watchHistory,
     scanFolder,
+    musicTrackCount,
   } = useLibrary();
 
   const totalWatchTime = watchHistory.reduce((acc, wh) => {
@@ -145,6 +155,10 @@ export default function Sidebar() {
           <div className="flex justify-between text-cinema-text-secondary">
             <span>Shows</span>
             <span className="text-white font-medium tabular-nums">{tvShows.length}</span>
+          </div>
+          <div className="flex justify-between text-cinema-text-secondary">
+            <span>Tracks</span>
+            <span className="text-white font-medium tabular-nums">{musicTrackCount}</span>
           </div>
           <div className="flex justify-between text-cinema-text-secondary">
             <span>Watch Time</span>

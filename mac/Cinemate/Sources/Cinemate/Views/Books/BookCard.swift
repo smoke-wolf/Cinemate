@@ -1,10 +1,12 @@
 import SwiftUI
+import AppKit
 
 struct BookCard: View {
     let book: Book
     let onTap: () -> Void
     let onRead: () -> Void
     let onFavorite: () -> Void
+    var onMarkFinished: (() -> Void)? = nil
 
     @State private var isHovered = false
     @State private var coverImage: NSImage?
@@ -146,6 +148,35 @@ struct BookCard: View {
             .scaleEffect(isHovered ? 1.05 : 1.0)
             .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 12 : 4, y: isHovered ? 6 : 2)
             .animation(.easeInOut(duration: 0.15), value: isHovered)
+            .contextMenu {
+                Button(action: onRead) {
+                    Label("Read", systemImage: "book.fill")
+                }
+                Button(action: {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: book.filePath))
+                }) {
+                    Label("Open in Books.app", systemImage: "arrow.up.forward.app")
+                }
+                Divider()
+                Button(action: { onMarkFinished?() }) {
+                    Label(
+                        book.finished ? "Mark as Unfinished" : "Mark as Finished",
+                        systemImage: book.finished ? "xmark.circle" : "checkmark.circle"
+                    )
+                }
+                Button(action: onFavorite) {
+                    Label(
+                        book.favorite ? "Remove Favorite" : "Toggle Favorite",
+                        systemImage: book.favorite ? "heart.slash.fill" : "heart"
+                    )
+                }
+                Divider()
+                Button(action: {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: book.filePath)])
+                }) {
+                    Label("Show in Finder", systemImage: "folder")
+                }
+            }
 
             Text(book.title)
                 .font(.system(size: 12, weight: .medium))

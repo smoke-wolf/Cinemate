@@ -60,6 +60,9 @@ final class MusicViewModel: ObservableObject {
     @Published var selectedPlaylist: Playlist?
 
 
+    // Scroll-to-now-playing trigger (increment to scroll)
+    @Published var scrollToNowPlayingTrigger: Int = 0
+
     // Sort options
     @Published var trackSortOption: TrackSortOption = .artist
     @Published var trackSortAscending: Bool = true

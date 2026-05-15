@@ -90,20 +90,78 @@ struct NowPlayingBar: View {
                     .foregroundColor(.white)
                     .lineLimit(1)
 
-                Text(viewModel.nowPlaying.currentTrack?.artist ?? "")
-                    .font(.system(size: 12))
-                    .foregroundColor(.gray)
-                    .lineLimit(1)
+                Button(action: {
+                    guard let track = viewModel.nowPlaying.currentTrack,
+                          let artist = viewModel.artists.first(where: { $0.name == track.artist }) else { return }
+                    viewModel.selectedAlbum = nil
+                    viewModel.selectedPlaylist = nil
+                    viewModel.selectedArtist = artist
+                }) {
+                    Text(viewModel.nowPlaying.currentTrack?.artist ?? "")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
             }
 
-            // Favorite button
             if let track = viewModel.nowPlaying.currentTrack {
+                // Favorite button
                 Button(action: { viewModel.toggleFavorite(track) }) {
                     Image(systemName: track.favorite ? "heart.fill" : "heart")
                         .font(.system(size: 12))
                         .foregroundColor(track.favorite ? .red : .gray.opacity(0.5))
                 }
                 .buttonStyle(.plain)
+
+                // More actions menu
+                Menu {
+                    Button(action: { viewModel.addToQueue(track) }) {
+                        Label("Add to Queue", systemImage: "text.badge.plus")
+                    }
+
+                    Divider()
+
+                    Button(action: {
+                        if let artist = viewModel.artists.first(where: { $0.name == track.artist }) {
+                            viewModel.selectedAlbum = nil
+                            viewModel.selectedPlaylist = nil
+                            viewModel.selectedArtist = artist
+                        }
+                    }) {
+                        Label("Go to Artist", systemImage: "music.mic")
+                    }
+
+                    Button(action: {
+                        let key = "\(track.artist):::\(track.album)"
+                        if let album = viewModel.albums.first(where: { $0.id == key }) {
+                            viewModel.selectedArtist = nil
+                            viewModel.selectedPlaylist = nil
+                            viewModel.selectedAlbum = album
+                        }
+                    }) {
+                        Label("Go to Album", systemImage: "square.stack")
+                    }
+
+                    Divider()
+
+                    if !viewModel.playlists.isEmpty {
+                        Menu("Add to Playlist") {
+                            ForEach(viewModel.playlists) { playlist in
+                                Button(playlist.name) {
+                                    viewModel.addToPlaylist(playlist.id, track: track)
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 12))
+                        .foregroundColor(.gray.opacity(0.5))
+                        .frame(width: 20, height: 20)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
             }
         }
     }
@@ -223,6 +281,17 @@ struct NowPlayingBar: View {
 
     private var rightSection: some View {
         HStack(spacing: 12) {
+            // Scroll to now playing
+            Button(action: {
+                viewModel.scrollToNowPlayingTrigger += 1
+            }) {
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 12))
+                    .foregroundColor(.gray)
+            }
+            .buttonStyle(.plain)
+            .help("Scroll to Now Playing")
+
             // Queue button
             Button(action: { showQueuePopover.toggle() }) {
                 Image(systemName: "list.bullet")
@@ -401,7 +470,7 @@ struct QueuePanelView: View {
                         .font(.system(size: 13))
                         .foregroundColor(.gray.opacity(0.6))
 
-                    Text("Add tracks from your library")
+                    Text("Right-click a track \u{2192} Add to Queue")
                         .font(.system(size: 11))
                         .foregroundColor(.gray.opacity(0.4))
                 }
