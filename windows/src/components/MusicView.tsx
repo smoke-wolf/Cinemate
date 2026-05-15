@@ -125,6 +125,7 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
       loadAlbums(),
       loadPlaylists(),
     ]).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reload on tab change
@@ -134,12 +135,19 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
     if (subTab === 'albums') loadAlbums(search);
     if (subTab === 'playlists') loadPlaylists();
     if (subTab === 'browse') loadBrowseData();
-  }, [subTab]);
+  }, [subTab, search, loadTracks, loadArtists, loadAlbums, loadPlaylists, loadBrowseData]);
 
   // Re-sort tracks
   useEffect(() => {
     if (subTab === 'tracks') loadTracks(search);
-  }, [trackSort, trackSortOrder]);
+  }, [trackSort, trackSortOrder, subTab, search, loadTracks]);
+
+  // Cleanup search debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    };
+  }, []);
 
   // Debounced search
   const handleSearch = (value: string) => {

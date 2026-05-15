@@ -17,7 +17,191 @@ final class BookViewModel: ObservableObject {
     @Published var isScanning = false
     @Published var scanProgress = 0
 
+    @Published var ttsInstalled = false
+    @Published var ttsInstalling = false
+    @Published var ttsInstallLog = ""
+    @Published var ttsGenerating = false
+    @Published var ttsProgress = ""
+    @Published var ttsChapterProgress: (current: Int, total: Int) = (0, 0)
+
     var accountId: Int64? = nil
+
+    private let ttsDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".cinemate/tts")
+
+    func checkTTSInstalled() {
+        let marker = ttsDir.appendingPathComponent(".installed")
+        let model = ttsDir.appendingPathComponent("models/kokoro-v1.0.onnx")
+        ttsInstalled = FileManager.default.fileExists(atPath: marker.path)
+            && FileManager.default.fileExists(atPath: model.path)
+    }
+
+    func installTTS() {
+        guard !ttsInstalling else { return }
+        ttsInstalling = true
+        ttsInstallLog = "Starting TTS engine install..."
+
+        let scriptPath = Bundle.main.resourcePath
+            .map { ($0 as NSString).deletingLastPathComponent + "/../../../scripts/install-tts.sh" }
+            ?? ""
+
+        let resolvedScript: String
+        if FileManager.default.fileExists(atPath: scriptPath) {
+            resolvedScript = scriptPath
+        } else {
+            let devScript = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("cinemate-v3/mac/scripts/install-tts.sh").path
+            if FileManager.default.fileExists(atPath: devScript) {
+                resolvedScript = devScript
+            } else {
+                ttsInstallLog = "Error: install-tts.sh not found"
+                ttsInstalling = false
+                return
+            }
+        }
+
+        Task.detached { [weak self] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [resolvedScript]
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            do {
+                try process.run()
+            } catch {
+                await MainActor.run {
+                    self?.ttsInstallLog = "Failed to start installer: \(error.localizedDescription)"
+                    self?.ttsInstalling = false
+                }
+                return
+            }
+
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty, let line = String(data: data, encoding: .utf8) else { return }
+                Task { @MainActor in
+                    self?.ttsInstallLog = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+
+            process.waitUntilExit()
+
+            await MainActor.run {
+                self?.ttsInstalling = false
+                self?.checkTTSInstalled()
+                if self?.ttsInstalled == true {
+                    self?.ttsInstallLog = "Kokoro TTS installed successfully!"
+                } else {
+                    self?.ttsInstallLog = "Installation failed (exit code \(process.terminationStatus))"
+                }
+            }
+        }
+    }
+
+    func generateAudiobook(_ book: Book, voice: String = "af_bella", speed: Double = 1.0) {
+        guard !ttsGenerating else { return }
+        ttsGenerating = true
+        ttsProgress = "Preparing..."
+        ttsChapterProgress = (0, 0)
+
+        let scriptPath: String
+        let devScript = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("cinemate-v3/mac/scripts/book-to-audio.sh").path
+        if FileManager.default.fileExists(atPath: devScript) {
+            scriptPath = devScript
+        } else {
+            let bundleScript = Bundle.main.resourcePath
+                .map { ($0 as NSString).deletingLastPathComponent + "/../../../scripts/book-to-audio.sh" }
+                ?? ""
+            scriptPath = bundleScript
+        }
+
+        let outputDir = audiobookDirectory(for: book)
+        try? FileManager.default.createDirectory(at: URL(fileURLWithPath: outputDir), withIntermediateDirectories: true)
+
+        Task.detached { [weak self] in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [scriptPath, book.filePath, outputDir, "--voice", voice, "--speed", String(speed)]
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            do {
+                try process.run()
+            } catch {
+                await MainActor.run {
+                    self?.ttsProgress = "Failed: \(error.localizedDescription)"
+                    self?.ttsGenerating = false
+                }
+                return
+            }
+
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty, let output = String(data: data, encoding: .utf8) else { return }
+                for line in output.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty { continue }
+
+                    Task { @MainActor in
+                        if trimmed.hasPrefix("[PROGRESS] STAGE|") {
+                            let parts = trimmed.replacingOccurrences(of: "[PROGRESS] STAGE|", with: "")
+                                .components(separatedBy: "|")
+                            self?.ttsProgress = parts.last ?? trimmed
+                        } else if trimmed.hasPrefix("[PROGRESS] CHAPTER|") {
+                            let parts = trimmed.replacingOccurrences(of: "[PROGRESS] CHAPTER|", with: "")
+                                .components(separatedBy: "|")
+                            if parts.count >= 3,
+                               let current = Int(parts[0]),
+                               let total = Int(parts[1]) {
+                                self?.ttsChapterProgress = (current, total)
+                                self?.ttsProgress = "Chapter \(current)/\(total): \(parts[2])"
+                            }
+                        } else if trimmed.hasPrefix("[PROGRESS] DONE|") {
+                            self?.ttsProgress = "Complete!"
+                        }
+                    }
+                }
+            }
+
+            process.waitUntilExit()
+
+            await MainActor.run {
+                self?.ttsGenerating = false
+                if process.terminationStatus == 0 {
+                    self?.ttsProgress = "Audiobook ready!"
+                } else {
+                    self?.ttsProgress = "Generation failed"
+                }
+            }
+        }
+    }
+
+    func audiobookDirectory(for book: Book) -> String {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Cinemate/audiobooks", isDirectory: true)
+        let safe = book.title.replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+        return base.appendingPathComponent(safe).path
+    }
+
+    func audiobookExists(for book: Book) -> Bool {
+        let dir = audiobookDirectory(for: book)
+        let meta = (dir as NSString).appendingPathComponent("audiobook.json")
+        return FileManager.default.fileExists(atPath: meta)
+    }
+
+    func audiobookMetadata(for book: Book) -> AudiobookMeta? {
+        let dir = audiobookDirectory(for: book)
+        let meta = (dir as NSString).appendingPathComponent("audiobook.json")
+        guard let data = FileManager.default.contents(atPath: meta) else { return nil }
+        return try? JSONDecoder().decode(AudiobookMeta.self, from: data)
+    }
 
     func loadBooks() {
         let aid = accountId

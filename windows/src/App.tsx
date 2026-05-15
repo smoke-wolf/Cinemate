@@ -277,7 +277,7 @@ export default function App() {
       loadFavorites();
       loadMusicStats();
     }
-  }, [screen, currentAccount]);
+  }, [screen, currentAccount, loadMovies, loadTVShows, loadWatchHistory, loadFavorites, loadMusicStats]);
 
   // ─── Computed data ───
 

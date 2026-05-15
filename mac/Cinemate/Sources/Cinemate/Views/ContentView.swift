@@ -36,7 +36,8 @@ struct ContentView: View {
                 onRead: { viewModel.bookViewModel.openReader(book) },
                 onFavorite: { viewModel.bookViewModel.toggleFavorite(book) },
                 onMarkFinished: { viewModel.bookViewModel.markFinished(book) },
-                onOpenInBooks: { viewModel.bookViewModel.openInBooksApp(book) }
+                onOpenInBooks: { viewModel.bookViewModel.openInBooksApp(book) },
+                viewModel: viewModel.bookViewModel
             )
         }
         .onAppear {

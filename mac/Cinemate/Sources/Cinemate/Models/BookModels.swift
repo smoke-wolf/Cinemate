@@ -94,6 +94,72 @@ struct BookAuthor: Identifiable, Hashable {
     var id: String { name }
 }
 
+// MARK: - Audiobook Metadata
+
+struct AudiobookMeta: Codable {
+    let title: String
+    let generatedAt: String
+    let ttsEngine: String
+    let voice: String
+    let speed: Double
+    let totalChapters: Int
+    let totalDurationSeconds: Double
+    let totalDurationDisplay: String
+    let chapters: [AudiobookChapter]
+
+    enum CodingKeys: String, CodingKey {
+        case title
+        case generatedAt = "generated_at"
+        case ttsEngine = "tts_engine"
+        case voice, speed
+        case totalChapters = "total_chapters"
+        case totalDurationSeconds = "total_duration_seconds"
+        case totalDurationDisplay = "total_duration_display"
+        case chapters
+    }
+}
+
+struct AudiobookChapter: Codable, Identifiable {
+    let index: Int
+    let title: String
+    let filename: String
+    let durationSeconds: Double
+    let durationDisplay: String
+    let fileSize: Int
+    let charCount: Int
+
+    var id: Int { index }
+
+    enum CodingKeys: String, CodingKey {
+        case index, title, filename
+        case durationSeconds = "duration_seconds"
+        case durationDisplay = "duration_display"
+        case fileSize = "file_size"
+        case charCount = "char_count"
+    }
+}
+
+// MARK: - TTS Voice
+
+struct TTSVoice: Identifiable {
+    let id: String
+    let name: String
+    let accent: String
+
+    static let allVoices: [TTSVoice] = [
+        TTSVoice(id: "af_bella", name: "Bella", accent: "American"),
+        TTSVoice(id: "af_nicole", name: "Nicole", accent: "American"),
+        TTSVoice(id: "af_sarah", name: "Sarah", accent: "American"),
+        TTSVoice(id: "af_sky", name: "Sky", accent: "American"),
+        TTSVoice(id: "am_adam", name: "Adam", accent: "American"),
+        TTSVoice(id: "am_michael", name: "Michael", accent: "American"),
+        TTSVoice(id: "bf_emma", name: "Emma", accent: "British"),
+        TTSVoice(id: "bf_isabella", name: "Isabella", accent: "British"),
+        TTSVoice(id: "bm_george", name: "George", accent: "British"),
+        TTSVoice(id: "bm_lewis", name: "Lewis", accent: "British"),
+    ]
+}
+
 // MARK: - Book Sort Option
 
 enum BookSortOption: String, CaseIterable {

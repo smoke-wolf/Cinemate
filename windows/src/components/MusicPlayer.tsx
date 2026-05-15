@@ -58,6 +58,7 @@ export default function MusicPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
   const seekRef = useRef<HTMLDivElement>(null);
+  const seekTimeRef = useRef(0);
 
   const { currentAccount } = useAccounts();
 
@@ -110,7 +111,9 @@ export default function MusicPlayer({
     const rect = seekRef.current?.getBoundingClientRect();
     if (!rect || !duration) return;
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setCurrentTime(pct * duration);
+    const time = pct * duration;
+    seekTimeRef.current = time;
+    setCurrentTime(time);
   }, [duration]);
 
   const handleSeekMove = useCallback((e: MouseEvent) => {
@@ -118,7 +121,9 @@ export default function MusicPlayer({
     const rect = seekRef.current?.getBoundingClientRect();
     if (!rect || !duration) return;
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setCurrentTime(pct * duration);
+    const time = pct * duration;
+    seekTimeRef.current = time;
+    setCurrentTime(time);
   }, [isSeeking, duration]);
 
   const handleSeekEnd = useCallback(() => {
@@ -126,9 +131,9 @@ export default function MusicPlayer({
     setIsSeeking(false);
     const audio = audioRef.current;
     if (audio) {
-      audio.currentTime = currentTime;
+      audio.currentTime = seekTimeRef.current;
     }
-  }, [isSeeking, currentTime, audioRef]);
+  }, [isSeeking, audioRef]);
 
   useEffect(() => {
     if (isSeeking) {

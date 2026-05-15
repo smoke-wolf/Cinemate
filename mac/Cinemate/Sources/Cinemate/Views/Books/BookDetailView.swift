@@ -6,11 +6,14 @@ struct BookDetailView: View {
     let onFavorite: () -> Void
     let onMarkFinished: () -> Void
     let onOpenInBooks: () -> Void
+    @ObservedObject var viewModel: BookViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var coverImage: NSImage?
     @State private var showFullDescription = false
     @State private var bookmarks: [BookBookmark] = []
+    @State private var selectedVoice = "af_bella"
+    @State private var ttsSpeed: Double = 1.0
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -221,6 +224,207 @@ struct BookDetailView: View {
                         }
                         .padding(.horizontal, 24)
 
+                        // Audiobook / TTS section
+                        Divider().background(Color.gray.opacity(0.2)).padding(.horizontal, 24)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                Text("Audiobook")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+
+                            if !viewModel.ttsInstalled {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("TTS Engine Not Installed")
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundColor(.white.opacity(0.7))
+                                        Text("Kokoro TTS — high-quality neural voice, ~100 MB")
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.gray)
+                                    }
+                                    Spacer()
+                                    Button(action: { viewModel.installTTS() }) {
+                                        HStack(spacing: 6) {
+                                            if viewModel.ttsInstalling {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            } else {
+                                                Image(systemName: "arrow.down.circle.fill")
+                                            }
+                                            Text(viewModel.ttsInstalling ? "Installing..." : "Install TTS")
+                                        }
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .background(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                        .cornerRadius(6)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(viewModel.ttsInstalling)
+                                }
+                                .padding(12)
+                                .background(Color.white.opacity(0.04))
+                                .cornerRadius(8)
+
+                                if !viewModel.ttsInstallLog.isEmpty {
+                                    Text(viewModel.ttsInstallLog)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.gray)
+                                        .lineLimit(2)
+                                }
+                            } else if viewModel.audiobookExists(for: book) {
+                                if let meta = viewModel.audiobookMetadata(for: book) {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                                .font(.system(size: 14))
+                                            Text("Audiobook Ready")
+                                                .font(.system(size: 12, weight: .medium))
+                                                .foregroundColor(.white.opacity(0.8))
+                                            Spacer()
+                                            Text("\(meta.totalChapters) chapters \u{00B7} \(meta.totalDurationDisplay)")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.gray)
+                                        }
+
+                                        Button(action: {
+                                            let dir = viewModel.audiobookDirectory(for: book)
+                                            NSWorkspace.shared.open(URL(fileURLWithPath: dir))
+                                        }) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "headphones")
+                                                Text("Open Audiobook Folder")
+                                            }
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.black)
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 8)
+                                            .background(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                            .cornerRadius(6)
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        ForEach(meta.chapters.prefix(5)) { chapter in
+                                            HStack(spacing: 8) {
+                                                Text("\(chapter.index).")
+                                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                                    .foregroundColor(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                                    .frame(width: 24, alignment: .trailing)
+                                                Text(chapter.title)
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                    .lineLimit(1)
+                                                Spacer()
+                                                Text(chapter.durationDisplay)
+                                                    .font(.system(size: 11, design: .monospaced))
+                                                    .foregroundColor(.gray)
+                                            }
+                                        }
+
+                                        if meta.chapters.count > 5 {
+                                            Text("+ \(meta.chapters.count - 5) more chapters")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    .padding(12)
+                                    .background(Color.white.opacity(0.04))
+                                    .cornerRadius(8)
+                                }
+                            } else {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Voice")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.gray)
+                                            Picker("", selection: $selectedVoice) {
+                                                ForEach(TTSVoice.allVoices) { v in
+                                                    Text("\(v.name) (\(v.accent))")
+                                                        .tag(v.id)
+                                                }
+                                            }
+                                            .labelsHidden()
+                                            .frame(width: 160)
+                                        }
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Speed")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.gray)
+                                            HStack(spacing: 6) {
+                                                Slider(value: $ttsSpeed, in: 0.5...2.0, step: 0.1)
+                                                    .frame(width: 100)
+                                                Text(String(format: "%.1fx", ttsSpeed))
+                                                    .font(.system(size: 11, design: .monospaced))
+                                                    .foregroundColor(.white.opacity(0.7))
+                                                    .frame(width: 32)
+                                            }
+                                        }
+
+                                        Spacer()
+                                    }
+
+                                    Button(action: {
+                                        viewModel.generateAudiobook(book, voice: selectedVoice, speed: ttsSpeed)
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            if viewModel.ttsGenerating {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            } else {
+                                                Image(systemName: "waveform.badge.plus")
+                                            }
+                                            Text(viewModel.ttsGenerating ? "Generating..." : "Generate Audiobook")
+                                        }
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(.black)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                        .cornerRadius(6)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(viewModel.ttsGenerating)
+
+                                    if viewModel.ttsGenerating {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            if viewModel.ttsChapterProgress.total > 0 {
+                                                GeometryReader { geo in
+                                                    ZStack(alignment: .leading) {
+                                                        RoundedRectangle(cornerRadius: 3)
+                                                            .fill(Color.white.opacity(0.15))
+                                                            .frame(height: 6)
+                                                        RoundedRectangle(cornerRadius: 3)
+                                                            .fill(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                                            .frame(
+                                                                width: geo.size.width * CGFloat(viewModel.ttsChapterProgress.current) / CGFloat(max(viewModel.ttsChapterProgress.total, 1)),
+                                                                height: 6
+                                                            )
+                                                    }
+                                                }
+                                                .frame(height: 6)
+                                            }
+                                            Text(viewModel.ttsProgress)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                }
+                                .padding(12)
+                                .background(Color.white.opacity(0.04))
+                                .cornerRadius(8)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+
                         // Bookmarks section
                         if !bookmarks.isEmpty {
                             Divider().background(Color.gray.opacity(0.2)).padding(.horizontal, 24)
@@ -284,6 +488,7 @@ struct BookDetailView: View {
         .task {
             await loadCover()
             loadBookmarks()
+            viewModel.checkTTSInstalled()
         }
     }
 

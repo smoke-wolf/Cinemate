@@ -19,6 +19,7 @@ import type {
 class CinemateAPI {
   private baseUrl: string = '';
   private ws: WebSocket | null = null;
+  private wsIntentionalClose: boolean = false;
   private listeners: Map<string, Set<(data: unknown) => void>> = new Map();
 
   setBaseUrl(url: string) {
@@ -35,6 +36,7 @@ class CinemateAPI {
     if (this.ws) {
       this.ws.close();
     }
+    this.wsIntentionalClose = false;
     const wsUrl = this.baseUrl.replace(/^http/, 'ws') + '/ws';
     try {
       this.ws = new WebSocket(wsUrl);
@@ -48,12 +50,15 @@ class CinemateAPI {
         } catch {}
       };
       this.ws.onclose = () => {
-        setTimeout(() => this.connectWebSocket(), 5000);
+        if (!this.wsIntentionalClose) {
+          setTimeout(() => this.connectWebSocket(), 5000);
+        }
       };
     } catch {}
   }
 
   disconnectWebSocket() {
+    this.wsIntentionalClose = true;
     if (this.ws) {
       this.ws.close();
       this.ws = null;
