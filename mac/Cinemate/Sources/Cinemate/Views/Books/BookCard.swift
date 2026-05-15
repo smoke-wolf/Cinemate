@@ -75,9 +75,11 @@ struct BookCard: View {
                             VStack(spacing: 10) {
                                 Button(action: onRead) {
                                     HStack(spacing: 6) {
-                                        Image(systemName: "book.fill")
+                                        Image(systemName: book.format == "PDF" ? "book.fill" : "arrow.up.forward.app")
                                             .font(.system(size: 14))
-                                        Text("Read")
+                                        Text(book.format == "PDF"
+                                             ? (book.readingProgress > 0 && !book.finished ? "Resume" : "Read")
+                                             : "Open in Books")
                                             .font(.system(size: 13, weight: .semibold))
                                     }
                                     .foregroundColor(.black)
@@ -88,7 +90,7 @@ struct BookCard: View {
                                 }
                                 .buttonStyle(.plain)
 
-                                HStack(spacing: 14) {
+                                HStack(spacing: 12) {
                                     Button(action: onFavorite) {
                                         Image(systemName: book.favorite ? "heart.fill" : "heart")
                                             .font(.system(size: 16))
@@ -96,10 +98,17 @@ struct BookCard: View {
                                     }
                                     .buttonStyle(.plain)
 
+                                    Button(action: { onMarkFinished?() }) {
+                                        Image(systemName: book.finished ? "checkmark.circle.fill" : "checkmark.circle")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(book.finished ? .green : .white)
+                                    }
+                                    .buttonStyle(.plain)
+
                                     if book.pageCount > 0 {
-                                        Text("\(book.pageCount) pages")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.white.opacity(0.7))
+                                        Text("\(book.pageCount)p")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.white.opacity(0.5))
                                     }
                                 }
                             }
