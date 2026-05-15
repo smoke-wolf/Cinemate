@@ -625,9 +625,9 @@ final class MusicViewModel: ObservableObject {
     private func buildAlbumsAndArtists() {
         // Build albums from tracks
         let groupedByAlbum = Dictionary(grouping: tracks) { "\($0.artist):::\($0.album)" }
-        albums = groupedByAlbum.map { key, albumTracks in
+        albums = groupedByAlbum.compactMap { key, albumTracks in
             let sorted = albumTracks.sorted { $0.trackNumber < $1.trackNumber }
-            let first = sorted.first!
+            guard let first = sorted.first else { return nil }
             return MusicAlbum(
                 id: key,
                 name: first.album,
@@ -891,6 +891,11 @@ final class MusicViewModel: ObservableObject {
             if nowPlaying.repeatMode == .all, let track = nowPlaying.currentTrack {
                 // Restart current track if repeat is on and queue is empty
                 play(track: track)
+            } else {
+                // Queue exhausted and repeat is off -- stop playback
+                nowPlaying.isPlaying = false
+                stopProgressTimer()
+                updateNowPlayingInfo()
             }
             return
         }
@@ -969,7 +974,7 @@ final class MusicViewModel: ObservableObject {
     }
 
     func removeFromQueue(at index: Int) {
-        guard index < nowPlaying.queue.count else { return }
+        guard index >= 0, index < nowPlaying.queue.count else { return }
         nowPlaying.queue.remove(at: index)
     }
 
@@ -986,6 +991,10 @@ final class MusicViewModel: ObservableObject {
     func toggleFavorite(_ track: MusicTrack) {
         if let index = tracks.firstIndex(where: { $0.id == track.id }) {
             tracks[index].favorite.toggle()
+            // Keep nowPlaying.currentTrack in sync so the now-playing bar updates
+            if nowPlaying.currentTrack?.id == track.id {
+                nowPlaying.currentTrack?.favorite = tracks[index].favorite
+            }
             saveMusicStats()
         }
     }

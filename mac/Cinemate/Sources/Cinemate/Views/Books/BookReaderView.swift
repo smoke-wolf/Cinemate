@@ -97,75 +97,155 @@ struct BookReaderView: View {
     private var pdfReaderContent: some View {
         VStack(spacing: 0) {
             // Top bar
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Button(action: {
                     saveProgress()
                     onClose()
                 }) {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                         Text(book.title)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.08))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
 
                 Spacer()
 
-                // Page indicator
-                Text("Page \(currentPage) of \(totalPages)")
-                    .font(.system(size: 12, weight: .medium).monospacedDigit())
-                    .foregroundColor(.white.opacity(0.7))
+                // Page navigation buttons
+                HStack(spacing: 4) {
+                    Button(action: { goToPage(currentPage - 1) }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(currentPage <= 1 ? .gray.opacity(0.3) : .white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(currentPage <= 1)
+
+                    Text("Page \(currentPage) of \(totalPages)")
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .foregroundColor(.white.opacity(0.6))
+                        .padding(.horizontal, 8)
+
+                    Button(action: { goToPage(currentPage + 1) }) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(currentPage >= totalPages ? .gray.opacity(0.3) : .white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(currentPage >= totalPages)
+                }
 
                 Spacer()
 
                 // Controls
-                HStack(spacing: 12) {
-                    // Zoom out
+                HStack(spacing: 8) {
+                    // Font size controls
+                    Button(action: { decreaseFontSize() }) {
+                        Image(systemName: "textformat.size.smaller")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Decrease text size")
+
+                    Button(action: { increaseFontSize() }) {
+                        Image(systemName: "textformat.size.larger")
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Increase text size")
+
+                    // Divider
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 1, height: 18)
+
+                    // Zoom controls
                     Button(action: { zoomOut() }) {
                         Image(systemName: "minus.magnifyingglass")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.8))
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
                     }
                     .buttonStyle(.plain)
+                    .help("Zoom out")
 
-                    // Zoom in
                     Button(action: { zoomIn() }) {
                         Image(systemName: "plus.magnifyingglass")
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.8))
+                            .font(.system(size: 12))
+                            .foregroundColor(.white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
                     }
                     .buttonStyle(.plain)
+                    .help("Zoom in")
+
+                    // Divider
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 1, height: 18)
 
                     // Bookmark
                     Button(action: { showBookmarkDialog = true }) {
-                        Image(systemName: "bookmark")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color(red: 0.95, green: 0.8, blue: 0.2))
+                        Image(systemName: isBookmarked ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 13))
+                            .foregroundColor(isBookmarked ? goldAccent : .white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
                     }
                     .buttonStyle(.plain)
+                    .help("Add bookmark")
 
                     // Night mode
                     Button(action: { nightMode.toggle() }) {
                         Image(systemName: nightMode ? "sun.max.fill" : "moon.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(nightMode ? .yellow : .white.opacity(0.8))
+                            .font(.system(size: 13))
+                            .foregroundColor(nightMode ? .yellow : .white.opacity(0.7))
+                            .frame(width: 28, height: 28)
+                            .background(Color.white.opacity(0.06))
+                            .cornerRadius(5)
                     }
                     .buttonStyle(.plain)
+                    .help(nightMode ? "Light mode" : "Dark mode")
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color(white: 0.06))
+            .padding(.vertical, 8)
+            .background(Color(white: 0.05))
 
-            Divider().background(Color.gray.opacity(0.3))
+            // Reading progress indicator
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(goldAccent.opacity(0.6))
+                    .frame(width: totalPages > 0 ? geo.size.width * CGFloat(currentPage) / CGFloat(totalPages) : 0, height: 2)
+                    .animation(.easeInOut(duration: 0.2), value: currentPage)
+            }
+            .frame(height: 2)
 
             // PDF content
             PDFKitView(
@@ -177,13 +257,11 @@ struct BookReaderView: View {
             )
             .colorInvert(nightMode)
 
-            Divider().background(Color.gray.opacity(0.3))
-
             // Bottom bar: page slider
             HStack(spacing: 16) {
                 Text("1")
-                    .font(.system(size: 11).monospacedDigit())
-                    .foregroundColor(.gray)
+                    .font(.system(size: 10).monospacedDigit())
+                    .foregroundColor(.gray.opacity(0.6))
 
                 Slider(
                     value: Binding(
@@ -196,17 +274,23 @@ struct BookReaderView: View {
                     in: 1...max(Double(totalPages), 1),
                     step: 1
                 )
-                .tint(Color(red: 0.95, green: 0.8, blue: 0.2))
+                .tint(goldAccent)
 
                 Text("\(totalPages)")
-                    .font(.system(size: 11).monospacedDigit())
-                    .foregroundColor(.gray)
+                    .font(.system(size: 10).monospacedDigit())
+                    .foregroundColor(.gray.opacity(0.6))
+
+                // Progress percentage
+                Text("\(progressPercent)%")
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundColor(goldAccent.opacity(0.7))
+                    .frame(width: 40, alignment: .trailing)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 8)
-            .background(Color(white: 0.06))
+            .padding(.vertical, 6)
+            .background(Color(white: 0.05))
         }
-        .background(nightMode ? Color.black : Color(white: 0.1))
+        .background(nightMode ? Color.black : Color(white: 0.08))
         .onAppear {
             // Restore reading position
             if book.currentPage > 0 {
@@ -217,6 +301,14 @@ struct BookReaderView: View {
         }
         .onDisappear {
             saveProgress()
+        }
+        .onKeyPress(.leftArrow) {
+            goToPage(currentPage - 1)
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            goToPage(currentPage + 1)
+            return .handled
         }
         .onKeyPress(.escape) {
             saveProgress()
@@ -283,31 +375,49 @@ struct BookReaderView: View {
 
     private var bookmarkDialog: some View {
         VStack(spacing: 16) {
-            Text("Add Bookmark")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.white)
+            HStack {
+                Image(systemName: "bookmark.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(goldAccent)
+                Text("Add Bookmark")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+            }
 
             Text("Page \(currentPage)")
-                .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.7))
+                .font(.system(size: 13, weight: .medium).monospacedDigit())
+                .foregroundColor(.white.opacity(0.5))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(4)
 
             TextField("Note (optional)", text: $bookmarkNote)
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .foregroundColor(.white)
                 .padding(10)
-                .background(Color.white.opacity(0.08))
+                .background(Color.white.opacity(0.06))
                 .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
 
             HStack(spacing: 12) {
                 Button("Cancel") {
                     showBookmarkDialog = false
                     bookmarkNote = ""
                 }
+                .font(.system(size: 13, weight: .medium))
                 .foregroundColor(.gray)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 7)
+                .background(Color.white.opacity(0.06))
+                .cornerRadius(6)
                 .buttonStyle(.plain)
 
-                Button("Save") {
+                Button("Save Bookmark") {
                     if let aid = accountId {
                         BookDatabase.shared.addBookmark(
                             bookId: book.id,
@@ -315,21 +425,30 @@ struct BookReaderView: View {
                             note: bookmarkNote.isEmpty ? nil : bookmarkNote,
                             accountId: aid
                         )
+                        isBookmarked = true
                     }
                     showBookmarkDialog = false
                     bookmarkNote = ""
                 }
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.black)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .background(Color(red: 0.95, green: 0.8, blue: 0.2))
+                .padding(.vertical, 7)
+                .background(goldAccent)
                 .cornerRadius(6)
                 .buttonStyle(.plain)
             }
         }
         .padding(24)
-        .frame(width: 300)
-        .background(Color(white: 0.1))
+        .frame(width: 320)
+        .background(Color(white: 0.08))
+    }
+
+    // MARK: - Computed
+
+    private var progressPercent: Int {
+        guard totalPages > 0 else { return 0 }
+        return min(Int(Double(currentPage) / Double(totalPages) * 100), 100)
     }
 
     // MARK: - Actions
@@ -352,6 +471,17 @@ struct BookReaderView: View {
     private func zoomOut() {
         guard let pdfView = pdfView else { return }
         pdfView.scaleFactor *= 0.8
+    }
+
+    private func increaseFontSize() {
+        // PDF doesn't have "font size" per se, but we can zoom in proportionally
+        guard let pdfView = pdfView else { return }
+        pdfView.scaleFactor *= 1.1
+    }
+
+    private func decreaseFontSize() {
+        guard let pdfView = pdfView else { return }
+        pdfView.scaleFactor *= 0.9
     }
 
     private func saveProgress() {

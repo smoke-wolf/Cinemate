@@ -77,6 +77,27 @@ async def _ensure_account(db, account_id: int):
 # ===========================================================================
 
 
+_TRACK_SORT_COLUMNS = {
+    "title": "title",
+    "artist": "artist",
+    "album": "album",
+    "year": "year",
+    "date_added": "date_added",
+    "duration": "duration",
+    "track_number": "track_number",
+}
+
+_ALBUM_SORT_COLUMNS = {
+    "name": "name",
+    "artist": "artist",
+    "year": "year",
+    "date_added": "date_added",
+    "track_count": "track_count",
+}
+
+_ORDER_DIRECTIONS = {"asc": "ASC", "desc": "DESC"}
+
+
 @router.get("/api/music/tracks")
 async def list_tracks(
     search: Optional[str] = None,
@@ -93,6 +114,14 @@ async def list_tracks(
     offset: int = Query(0, ge=0),
 ):
     """List all music tracks with filtering, sorting, pagination."""
+    # Whitelist-based SQL injection prevention — never interpolate user input
+    safe_sort = _TRACK_SORT_COLUMNS.get(sort)
+    if not safe_sort:
+        raise HTTPException(400, f"Invalid sort column: {sort}")
+    safe_order = _ORDER_DIRECTIONS.get(order)
+    if not safe_order:
+        raise HTTPException(400, f"Invalid order direction: {order}")
+
     db = await get_db()
     try:
         conditions = []
@@ -115,7 +144,7 @@ async def list_tracks(
             params.append(f"%{genre}%")
 
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
-        order_clause = f" ORDER BY {sort} {order.upper()}"
+        order_clause = f" ORDER BY {safe_sort} {safe_order}"
 
         cursor = await db.execute(
             f"SELECT COUNT(*) as cnt FROM music_tracks{where}", params
@@ -247,6 +276,14 @@ async def list_albums(
     offset: int = Query(0, ge=0),
 ):
     """List all albums."""
+    # Whitelist-based SQL injection prevention
+    safe_sort = _ALBUM_SORT_COLUMNS.get(sort)
+    if not safe_sort:
+        raise HTTPException(400, f"Invalid sort column: {sort}")
+    safe_order = _ORDER_DIRECTIONS.get(order)
+    if not safe_order:
+        raise HTTPException(400, f"Invalid order direction: {order}")
+
     db = await get_db()
     try:
         conditions = []
@@ -262,7 +299,7 @@ async def list_albums(
             params.append(year)
 
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
-        order_clause = f" ORDER BY {sort} {order.upper()}"
+        order_clause = f" ORDER BY {safe_sort} {safe_order}"
 
         cursor = await db.execute(
             f"SELECT COUNT(*) as cnt FROM music_albums{where}", params
