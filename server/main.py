@@ -29,7 +29,7 @@ from fastapi import (
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel
 
 from database import get_db, init_db, load_config, save_config, THUMBNAIL_DIR
@@ -242,6 +242,9 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 50)
 
     await asyncio.to_thread(start_mdns, port, name)
+
+    from transcode import precache_faststart_all
+    asyncio.create_task(precache_faststart_all())
 
     yield
 
@@ -860,7 +863,7 @@ async def mark_watched(account_id: int, media_id: int, data: WatchedUpdate = Wat
 # 4. VIDEO STREAMING
 # ===========================================================================
 
-@app.get("/api/stream/{media_id}")
+@app.api_route("/api/stream/{media_id}", methods=["GET", "HEAD"])
 async def stream_video(media_id: int, request: Request):
     """Stream a video file with HTTP Range support for seeking."""
     db = await get_db()
@@ -890,10 +893,19 @@ async def stream_video(media_id: int, request: Request):
     }
     content_type = content_types.get(ext, "application/octet-stream")
 
+    if request.method == "HEAD":
+        return Response(
+            status_code=200,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+                "Content-Type": content_type,
+            },
+        )
+
     range_header = request.headers.get("range")
 
     if range_header:
-        # Parse Range: bytes=start-end
         range_spec = range_header.replace("bytes=", "")
         parts = range_spec.split("-")
         start = int(parts[0]) if parts[0] else 0
@@ -906,7 +918,7 @@ async def stream_video(media_id: int, request: Request):
                 f.seek(start)
                 remaining = chunk_size
                 while remaining > 0:
-                    read_size = min(remaining, 1024 * 1024)  # 1MB chunks
+                    read_size = min(remaining, 1024 * 1024)
                     data = f.read(read_size)
                     if not data:
                         break

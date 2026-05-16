@@ -63,8 +63,8 @@ private struct SeeAllMovieCard: View {
                 CachedAsyncImage(url: URL(string: movie.thumbnailURL ?? "")) {
                     MediaPlaceholder(icon: "film")
                 }
-                .aspectRatio(16 / 9, contentMode: .fill)
-                .clipped()
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
 
                 if let quality = movie.quality {
@@ -81,10 +81,10 @@ private struct SeeAllMovieCard: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(movie.title)
+                Text(movie.cleanTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
+                    .lineLimit(2)
 
                 HStack(spacing: 6) {
                     if let year = movie.year {
@@ -105,6 +105,7 @@ private struct SeeAllMovieCard: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

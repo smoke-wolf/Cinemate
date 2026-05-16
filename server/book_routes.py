@@ -61,6 +61,7 @@ async def list_books(
     format: Optional[str] = None,
     genre: Optional[str] = None,
     author: Optional[str] = None,
+    account_id: Optional[int] = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
@@ -71,34 +72,49 @@ async def list_books(
         params = []
 
         if search:
-            conditions.append("(title LIKE ? OR author LIKE ?)")
+            conditions.append("(b.title LIKE ? OR b.author LIKE ?)")
             params.extend([f"%{search}%", f"%{search}%"])
         if format:
-            conditions.append("format = ?")
+            conditions.append("b.format = ?")
             params.append(format.upper())
         if genre:
-            conditions.append("genre LIKE ?")
+            conditions.append("b.genre LIKE ?")
             params.append(f"%{genre}%")
         if author:
-            conditions.append("author LIKE ?")
+            conditions.append("b.author LIKE ?")
             params.append(f"%{author}%")
 
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
-        order_clause = f" ORDER BY {sort} {order.upper()}"
 
-        # Total count
-        cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM books{where}", params)
+        if account_id is not None:
+            join = f" LEFT JOIN book_account_data bad ON b.id = bad.book_id AND bad.account_id = {int(account_id)}"
+            select = "b.*, COALESCE(bad.favorite, 0) as favorite, COALESCE(bad.reading_progress, 0.0) as reading_progress, COALESCE(bad.current_page, 0) as current_page, COALESCE(bad.finished, 0) as finished"
+        else:
+            join = ""
+            select = "b.*"
+
+        order_col = f"b.{sort}" if sort != "date_added" else "b.date_added"
+        order_clause = f" ORDER BY {order_col} {order.upper()}"
+
+        cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM books b{join}{where}", params)
         total = (await cursor.fetchone())["cnt"]
 
-        # Fetch page
         cursor = await db.execute(
-            f"SELECT * FROM books{where}{order_clause} LIMIT ? OFFSET ?",
+            f"SELECT {select} FROM books b{join}{where}{order_clause} LIMIT ? OFFSET ?",
             params + [limit, offset],
         )
         rows = await cursor.fetchall()
+        items = []
+        for r in rows:
+            d = row_to_dict(r)
+            if "favorite" in d:
+                d["favorite"] = bool(d["favorite"])
+            if "finished" in d:
+                d["finished"] = bool(d["finished"])
+            items.append(d)
 
         return {
-            "items": [row_to_dict(r) for r in rows],
+            "items": items,
             "total": total,
             "limit": limit,
             "offset": offset,

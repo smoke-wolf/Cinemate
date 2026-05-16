@@ -156,24 +156,21 @@ final class APIClient: ObservableObject {
 
     // MARK: - Music
 
-    func getMusicTracks(search: String? = nil, artist: String? = nil, album: String? = nil, albumId: Int? = nil) async throws -> [MusicTrack] {
-        var path = "/api/music/tracks?limit=500"
+    func getMusicTracks(search: String? = nil, artist: String? = nil, album: String? = nil, albumId: Int? = nil, limit: Int = 40, offset: Int = 0) async throws -> PaginatedResponse<MusicTrack> {
+        var path = "/api/music/tracks?limit=\(limit)&offset=\(offset)"
         if let search { path += "&search=\(search.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
         if let artist { path += "&artist=\(artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
         if let album { path += "&album=\(album.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
         if let albumId { path += "&album_id=\(albumId)" }
-        let response: PaginatedResponse<MusicTrack> = try await get(path)
-        return response.items
+        return try await get(path)
     }
 
-    func getAlbums() async throws -> [MusicAlbum] {
-        let response: PaginatedResponse<MusicAlbum> = try await get("/api/music/albums?limit=500")
-        return response.items
+    func getAlbums(limit: Int = 40, offset: Int = 0) async throws -> PaginatedResponse<MusicAlbum> {
+        try await get("/api/music/albums?limit=\(limit)&offset=\(offset)")
     }
 
-    func getArtists() async throws -> [MusicArtist] {
-        let response: PaginatedResponse<MusicArtist> = try await get("/api/music/artists?limit=500")
-        return response.items
+    func getArtists(limit: Int = 40, offset: Int = 0) async throws -> PaginatedResponse<MusicArtist> {
+        try await get("/api/music/artists?limit=\(limit)&offset=\(offset)")
     }
 
     func getArtistProfile(name: String) async throws -> ArtistProfile {
@@ -234,12 +231,12 @@ final class APIClient: ObservableObject {
 
     // MARK: - Books
 
-    func getBooks(search: String? = nil, format: String? = nil) async throws -> [Book] {
-        var path = "/api/books?limit=500"
+    func getBooks(search: String? = nil, format: String? = nil, accountId: Int? = nil, limit: Int = 40, offset: Int = 0) async throws -> PaginatedResponse<Book> {
+        var path = "/api/books?limit=\(limit)&offset=\(offset)"
         if let search { path += "&search=\(search.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
         if let format { path += "&format=\(format)" }
-        let response: PaginatedResponse<Book> = try await get(path)
-        return response.items
+        if let accountId { path += "&account_id=\(accountId)" }
+        return try await get(path)
     }
 
     func getBookStats() async throws -> BookStats {

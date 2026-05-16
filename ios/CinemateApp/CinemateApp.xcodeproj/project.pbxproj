@@ -24,6 +24,7 @@
 		4438D836BC4292BA4AF15217 /* ImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760FDC580B3EBBAE5266250A /* ImageCache.swift */; };
 		46435DAA94BCE06A742D4214 /* TVShowsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9B121BF17B2D40713D19B66 /* TVShowsView.swift */; };
 		48480DADB95805F74A58F91E /* SplashScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACD06CF0A6E7F52BA1776602 /* SplashScreen.swift */; };
+		C0NNEC71NGBF0001DEADBEEF /* ConnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0NNEC71NGRF0002DEADBEEF /* ConnectingView.swift */; };
 		4B90BCCEFB787F6BE12377DA /* ShimmerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF59F8F15306DF33C83A6846 /* ShimmerView.swift */; };
 		4BC7941D0598037ECF3ED1FE /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA5512275535ECC0BD51CBB /* ProfileView.swift */; };
 		58AF7653D06B68D2A9ACC483 /* GoldButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7EBF49D0F82EBAF8945B807 /* GoldButton.swift */; };
@@ -101,6 +102,7 @@
 		9A0F845746DD8E7C74A0FAE1 /* ServerConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConnectView.swift; sourceTree = "<group>"; };
 		A27D5D5A5452697B4551C916 /* MovieDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovieDetailView.swift; sourceTree = "<group>"; };
 		ACD06CF0A6E7F52BA1776602 /* SplashScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashScreen.swift; sourceTree = "<group>"; };
+		C0NNEC71NGRF0002DEADBEEF /* ConnectingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectingView.swift; sourceTree = "<group>"; };
 		B070971D17AA71FA0805C46F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B9B344D60337FED7EE4C1690 /* DownloadRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadRow.swift; sourceTree = "<group>"; };
 		BA32A3A09D4207387AAC76C6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -236,6 +238,7 @@
 				D9FBE0918F3380B585521A7B /* MainTabView.swift */,
 				58D308D36B2FA7EC7CBE3E12 /* QRScannerView.swift */,
 				9A0F845746DD8E7C74A0FAE1 /* ServerConnectView.swift */,
+				C0NNEC71NGRF0002DEADBEEF /* ConnectingView.swift */,
 				ACD06CF0A6E7F52BA1776602 /* SplashScreen.swift */,
 				DDD37284E770796054733649 /* Books */,
 				281811370C78C9BBECA4B535 /* Components */,
@@ -407,6 +410,7 @@
 				75274730CFDC6AE765E0C0D9 /* ServerInfo.swift in Sources */,
 				3C39D5A1168CAABAEF85D089 /* SettingsView.swift in Sources */,
 				4B90BCCEFB787F6BE12377DA /* ShimmerView.swift in Sources */,
+				C0NNEC71NGBF0001DEADBEEF /* ConnectingView.swift in Sources */,
 				48480DADB95805F74A58F91E /* SplashScreen.swift in Sources */,
 				43968F86E455AACBEB2C1F04 /* StarRating.swift in Sources */,
 				6F2213BF2ECC6567C3011610 /* TVShow.swift in Sources */,

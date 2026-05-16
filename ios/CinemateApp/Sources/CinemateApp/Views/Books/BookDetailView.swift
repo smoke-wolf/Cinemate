@@ -5,10 +5,10 @@ struct BookDetailView: View {
     let book: Book
     let account: Account
 
+    @ObservedObject var downloadManager = DownloadManager.shared
     @State private var isFavorite: Bool
     @State private var showReader = false
     @State private var descriptionExpanded = false
-    @State private var downloadStarted = false
 
     init(book: Book, account: Account) {
         self.book = book
@@ -121,16 +121,34 @@ struct BookDetailView: View {
 
                         Button(action: downloadBook) {
                             VStack(spacing: 4) {
-                                Image(systemName: isBookDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(isBookDownloaded ? Theme.success : Theme.textSecondary)
-                                Text(isBookDownloaded ? "Saved" : "Download")
+                                ZStack {
+                                    switch bookDownloadStatus {
+                                    case .completed:
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 22))
+                                            .foregroundStyle(Theme.success)
+                                    case .downloading, .queued, .paused:
+                                        ProgressView()
+                                            .scaleEffect(0.8)
+                                            .tint(Theme.primaryGold)
+                                    case .failed:
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 22))
+                                            .foregroundStyle(Theme.error)
+                                    default:
+                                        Image(systemName: "arrow.down.circle")
+                                            .font(.system(size: 22))
+                                            .foregroundStyle(Theme.textSecondary)
+                                    }
+                                }
+                                .frame(height: 24)
+                                Text(bookDownloadLabel)
                                     .font(.system(size: 11))
                                     .foregroundStyle(Theme.textSecondary)
                             }
                             .frame(width: 60)
                         }
-                        .disabled(isBookDownloaded)
+                        .disabled(bookDownloadStatus == .completed || bookDownloadStatus == .downloading || bookDownloadStatus == .queued)
                     }
                     .padding(.horizontal)
 
@@ -175,13 +193,23 @@ struct BookDetailView: View {
         #endif
     }
 
-    private var isBookDownloaded: Bool {
-        DownloadManager.shared.isDownloaded(contentType: .book, contentId: book.id)
+    private var bookDownloadStatus: DownloadStatus? {
+        downloadManager.downloadState(contentType: .book, contentId: book.id)
+    }
+
+    private var bookDownloadLabel: String {
+        switch bookDownloadStatus {
+        case .completed: return "Saved"
+        case .downloading, .queued, .paused: return "Saving..."
+        case .failed: return "Retry"
+        default: return "Download"
+        }
     }
 
     private func downloadBook() {
+        guard bookDownloadStatus == nil || bookDownloadStatus == .failed || bookDownloadStatus == .cancelled else { return }
         hapticImpact(.medium)
-        DownloadManager.shared.enqueueDownload(
+        downloadManager.enqueueDownload(
             contentType: .book,
             contentId: book.id,
             title: book.title,

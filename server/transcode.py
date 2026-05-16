@@ -119,6 +119,34 @@ def extract_media_info(probe_data: dict) -> dict:
     }
 
 
+def check_moov_at_start(file_path: str) -> bool:
+    """Check if the moov atom is before mdat (faststart-ready)."""
+    import struct
+    try:
+        with open(file_path, "rb") as f:
+            pos = 0
+            for _ in range(30):
+                header = f.read(8)
+                if len(header) < 8:
+                    return True
+                size = struct.unpack(">I", header[:4])[0]
+                atom = header[4:8]
+                if size == 1:
+                    ext = f.read(8)
+                    size = struct.unpack(">Q", ext)[0]
+                if atom == b"moov":
+                    return True
+                if atom == b"mdat":
+                    return False
+                if size < 8:
+                    return True
+                f.seek(pos + size)
+                pos = f.tell()
+    except Exception:
+        pass
+    return True
+
+
 def check_ios_compatible(info: dict) -> tuple[bool, list[str]]:
     """
     Check if the file is natively playable on iOS.
@@ -232,7 +260,7 @@ async def stream_info(media_id: int):
 # ---------------------------------------------------------------------------
 # Endpoint: transcode stream
 # ---------------------------------------------------------------------------
-@router.get("/{media_id}/transcode")
+@router.api_route("/{media_id}/transcode", methods=["GET", "HEAD"])
 async def stream_transcode(media_id: int, request: Request):
     """
     Stream a transcoded (iOS-compatible) version of the media file.
@@ -258,8 +286,38 @@ async def stream_transcode(media_id: int, request: Request):
     info = extract_media_info(probe_data)
     compatible, _ = check_ios_compatible(info)
 
-    # --- Case 1: Already compatible, serve raw file ---
+    # --- Case 1: Already compatible ---
     if compatible:
+        # Check if cached faststart version exists
+        cached = get_cached_path(file_path)
+        if cached:
+            return await _serve_file(cached, request)
+
+        # Check if moov atom is at start (faststart-ready)
+        moov_ok = await asyncio.to_thread(check_moov_at_start, file_path)
+        if moov_ok:
+            return await _serve_file(file_path, request)
+
+        # moov at end — remux with faststart (no re-encode, fast)
+        logger.info(f"Remuxing media {media_id} with faststart (moov at end)")
+        target = cache_target_path(file_path)
+        cmd = [
+            "ffmpeg", "-y", "-i", file_path,
+            "-c", "copy", "-movflags", "+faststart",
+            target,
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.wait()
+        if proc.returncode == 0 and os.path.exists(target):
+            logger.info(f"Faststart cache ready for media {media_id}")
+            return await _serve_file(target, request)
+
+        # Faststart remux failed — serve original (slow start but works)
+        logger.warning(f"Faststart remux failed for media {media_id}, serving original")
         return await _serve_file(file_path, request)
 
     # --- Case 2: Cached transcode exists ---
@@ -425,7 +483,19 @@ async def stream_transcode(media_id: int, request: Request):
 # ---------------------------------------------------------------------------
 async def _serve_file(file_path: str, request: Request):
     """Serve a file with HTTP Range support (for seeking in cached transcodes)."""
+    from starlette.responses import Response as StarletteResponse
     file_size = os.path.getsize(file_path)
+
+    if request.method == "HEAD":
+        return StarletteResponse(
+            status_code=200,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+                "Content-Type": "video/mp4",
+            },
+        )
+
     range_header = request.headers.get("range")
 
     if range_header:
@@ -537,3 +607,92 @@ async def clear_media_cache(media_id: int):
         return {"deleted": True, "freed_bytes": size}
 
     return {"deleted": False, "message": "No cached transcode found"}
+
+
+# ---------------------------------------------------------------------------
+# Background: pre-cache faststart for all media
+# ---------------------------------------------------------------------------
+_precache_running = False
+
+
+async def precache_faststart_all():
+    """Scan all media and create faststart-cached copies for files with moov at end."""
+    global _precache_running
+    if _precache_running:
+        return
+    _precache_running = True
+
+    try:
+        db = await get_db()
+        try:
+            cursor = await db.execute(
+                "SELECT id, file_path, format FROM media"
+            )
+            rows = await cursor.fetchall()
+        finally:
+            await db.close()
+
+        processed = 0
+        skipped = 0
+        for row in rows:
+            media_id = row["id"]
+            file_path = row["file_path"]
+
+            if not os.path.exists(file_path):
+                skipped += 1
+                continue
+
+            if get_cached_path(file_path):
+                skipped += 1
+                continue
+
+            probe_data = await asyncio.to_thread(probe_file, file_path)
+            if not probe_data:
+                skipped += 1
+                continue
+
+            info = extract_media_info(probe_data)
+            compatible, _ = check_ios_compatible(info)
+
+            if compatible:
+                moov_ok = await asyncio.to_thread(check_moov_at_start, file_path)
+                if moov_ok:
+                    skipped += 1
+                    continue
+
+                target = cache_target_path(file_path)
+                logger.info(f"[precache] Faststart remux media {media_id}: {row['format']}")
+                cmd = [
+                    "ffmpeg", "-y", "-i", file_path,
+                    "-c", "copy", "-movflags", "+faststart",
+                    target,
+                ]
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                await proc.wait()
+                if proc.returncode == 0:
+                    processed += 1
+                else:
+                    logger.warning(f"[precache] Failed for media {media_id}")
+                    if os.path.exists(target):
+                        os.remove(target)
+            else:
+                skipped += 1
+
+        logger.info(f"[precache] Done: {processed} remuxed, {skipped} skipped")
+    except Exception as e:
+        logger.error(f"[precache] Error: {e}")
+    finally:
+        _precache_running = False
+
+
+@router.post("/precache")
+async def trigger_precache():
+    """Trigger background pre-caching of faststart versions for all media."""
+    if _precache_running:
+        return {"status": "already_running"}
+    asyncio.create_task(precache_faststart_all())
+    return {"status": "started"}

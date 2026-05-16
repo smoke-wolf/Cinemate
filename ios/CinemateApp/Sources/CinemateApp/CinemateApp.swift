@@ -18,9 +18,11 @@ struct CinemateApp: App {
     @StateObject private var downloadManager = DownloadManager.shared
 
     @State private var appState: AppState = .splash
+    @State private var connectingTask: Task<Void, Never>?
 
     enum AppState {
         case splash
+        case connecting(String)
         case serverConnect
         case accountSelect
         case main(Account)
@@ -35,32 +37,48 @@ struct CinemateApp: App {
                 case .splash:
                     SplashScreen {
                         withAnimation(.easeInOut(duration: 0.4)) {
-                            // Check for saved server
                             if let savedURL = UserDefaults.standard.string(forKey: "savedServerURL"),
                                !savedURL.isEmpty {
-                                apiClient.configure(url: savedURL)
-                                Task {
-                                    do {
-                                        _ = try await apiClient.testConnection()
-                                        await MainActor.run {
-                                            withAnimation {
-                                                appState = .accountSelect
-                                            }
-                                        }
-                                    } catch {
-                                        await MainActor.run {
-                                            withAnimation {
-                                                appState = .serverConnect
-                                            }
-                                        }
-                                    }
-                                }
+                                appState = .connecting(savedURL)
                             } else {
                                 appState = .serverConnect
                             }
                         }
                     }
                     .transition(.opacity)
+
+                case .connecting(let savedURL):
+                    ConnectingView(
+                        serverURL: savedURL,
+                        onCancel: {
+                            connectingTask?.cancel()
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                appState = .serverConnect
+                            }
+                        }
+                    )
+                    .transition(.opacity)
+                    .onAppear {
+                        apiClient.configure(url: savedURL)
+                        connectingTask = Task {
+                            do {
+                                _ = try await apiClient.testConnection()
+                                guard !Task.isCancelled else { return }
+                                await MainActor.run {
+                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                        appState = .accountSelect
+                                    }
+                                }
+                            } catch {
+                                guard !Task.isCancelled else { return }
+                                await MainActor.run {
+                                    withAnimation(.easeInOut(duration: 0.4)) {
+                                        appState = .serverConnect
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                 case .serverConnect:
                     ServerConnectView {
@@ -96,6 +114,13 @@ struct CinemateApp: App {
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: appStateKey)
+            .onChange(of: apiClient.isConnected) { _, connected in
+                if !connected {
+                    withAnimation(.easeInOut(duration: 0.4)) {
+                        appState = .serverConnect
+                    }
+                }
+            }
             .preferredColorScheme(.dark)
         }
     }
@@ -104,6 +129,7 @@ struct CinemateApp: App {
     private var appStateKey: String {
         switch appState {
         case .splash: return "splash"
+        case .connecting: return "connecting"
         case .serverConnect: return "serverConnect"
         case .accountSelect: return "accountSelect"
         case .main: return "main"

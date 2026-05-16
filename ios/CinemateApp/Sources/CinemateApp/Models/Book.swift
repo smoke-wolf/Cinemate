@@ -67,8 +67,16 @@ struct Book: Identifiable, Codable, Hashable {
         dateAdded = try c.decodeIfPresent(String.self, forKey: .dateAdded)
         readingProgress = try c.decodeIfPresent(Double.self, forKey: .readingProgress) ?? 0
         currentPage = try c.decodeIfPresent(Int.self, forKey: .currentPage) ?? 0
-        favorite = try c.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
-        finished = try c.decodeIfPresent(Bool.self, forKey: .finished) ?? false
+        if let boolVal = try? c.decodeIfPresent(Bool.self, forKey: .favorite) {
+            favorite = boolVal
+        } else {
+            favorite = (try? c.decodeIfPresent(Int.self, forKey: .favorite)).map { $0 != 0 } ?? false
+        }
+        if let boolVal = try? c.decodeIfPresent(Bool.self, forKey: .finished) {
+            finished = boolVal
+        } else {
+            finished = (try? c.decodeIfPresent(Int.self, forKey: .finished)).map { $0 != 0 } ?? false
+        }
     }
 
     init(id: Int, title: String, author: String?, genre: String?, pageCount: Int,

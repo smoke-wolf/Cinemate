@@ -9,9 +9,9 @@ struct TrackRow: View {
     var onGoToArtist: ((String) -> Void)? = nil
     var onGoToAlbum: ((Int) -> Void)? = nil
 
+    @ObservedObject var downloadManager = DownloadManager.shared
     @State private var isFavorite: Bool = false
     @State private var showPlaylistPicker = false
-    @State private var showDownloadStarted = false
 
     private var isCurrentTrack: Bool {
         audioPlayer.currentTrack?.id == track.id
@@ -82,8 +82,16 @@ struct TrackRow: View {
                     }
 
                     Button(action: downloadTrack) {
-                        Label("Download", systemImage: "arrow.down.circle")
+                        switch trackDownloadStatus {
+                        case .completed:
+                            Label("Downloaded", systemImage: "checkmark.circle.fill")
+                        case .downloading, .queued, .paused:
+                            Label("Downloading...", systemImage: "arrow.down.circle.dotted")
+                        default:
+                            Label("Download", systemImage: "arrow.down.circle")
+                        }
                     }
+                    .disabled(trackDownloadStatus == .completed || trackDownloadStatus == .downloading || trackDownloadStatus == .queued)
 
                     Divider()
 
@@ -114,24 +122,16 @@ struct TrackRow: View {
         .sheet(isPresented: $showPlaylistPicker) {
             PlaylistPickerSheet(trackId: track.id)
         }
-        .overlay(alignment: .top) {
-            if showDownloadStarted {
-                Text("Download started")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.primaryGold.opacity(0.9))
-                    .clipShape(Capsule())
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .offset(y: -4)
-            }
-        }
+    }
+
+    private var trackDownloadStatus: DownloadStatus? {
+        downloadManager.downloadState(contentType: .musicTrack, contentId: track.id)
     }
 
     private func downloadTrack() {
+        guard trackDownloadStatus == nil || trackDownloadStatus == .failed || trackDownloadStatus == .cancelled else { return }
         hapticImpact(.medium)
-        DownloadManager.shared.enqueueDownload(
+        downloadManager.enqueueDownload(
             contentType: .musicTrack,
             contentId: track.id,
             title: track.title,
@@ -140,10 +140,6 @@ struct TrackRow: View {
             fileSize: 0,
             downloadPath: "/api/music/stream/\(track.id)"
         )
-        withAnimation { showDownloadStarted = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            withAnimation { showDownloadStarted = false }
-        }
     }
 }
 

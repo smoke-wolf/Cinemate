@@ -15,6 +15,7 @@ struct DownloadRecord: Identifiable, Codable {
     let title: String
     let subtitle: String?
     let thumbnailPath: String?
+    let downloadPath: String?
     var status: DownloadStatus
     var fileSize: Int64
     var bytesDownloaded: Int64
@@ -38,6 +39,7 @@ struct DownloadRecord: Identifiable, Codable {
         case title
         case subtitle
         case thumbnailPath = "thumbnail_path"
+        case downloadPath = "download_path"
         case status
         case fileSize = "file_size"
         case bytesDownloaded = "bytes_downloaded"

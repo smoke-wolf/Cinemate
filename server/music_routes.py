@@ -1261,7 +1261,11 @@ async def music_recently_played(
     try:
         await _ensure_account(db, account_id)
         cursor = await db.execute(
-            """SELECT h.*, t.title, t.artist, t.album, t.duration, t.album_id
+            """SELECT t.id, t.title, t.artist, t.album, t.album_artist,
+                      t.track_number, t.disc_number, t.year, t.genre,
+                      t.duration, t.bitrate, t.sample_rate, t.format,
+                      t.file_size, t.album_id,
+                      h.played_at, h.duration_listened
                FROM music_play_history h
                JOIN music_tracks t ON t.id = h.track_id
                WHERE h.account_id = ?

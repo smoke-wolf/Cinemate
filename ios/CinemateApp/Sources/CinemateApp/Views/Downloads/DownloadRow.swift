@@ -2,8 +2,6 @@ import SwiftUI
 
 struct DownloadRow: View {
     let record: DownloadRecord
-    let onPause: () -> Void
-    let onResume: () -> Void
     let onCancel: () -> Void
     let onRetry: () -> Void
     let onDelete: () -> Void
@@ -119,17 +117,8 @@ struct DownloadRow: View {
     private var actionButton: some View {
         Group {
             switch record.status {
-            case .downloading:
-                HStack(spacing: 8) {
-                    circleButton(icon: "pause.fill", color: Theme.warmAmber, action: onPause)
-                    circleButton(icon: "xmark", color: Theme.textTertiary, action: onCancel)
-                }
-
-            case .paused:
-                HStack(spacing: 8) {
-                    circleButton(icon: "play.fill", color: Theme.primaryGold, action: onResume)
-                    circleButton(icon: "xmark", color: Theme.textTertiary, action: onCancel)
-                }
+            case .downloading, .paused:
+                circleButton(icon: "xmark", color: Theme.textTertiary, action: onCancel)
 
             case .queued:
                 circleButton(icon: "xmark", color: Theme.textTertiary, action: onCancel)
@@ -173,33 +162,33 @@ struct DownloadRow: View {
                 record: DownloadRecord(
                     id: "1", contentType: .media, contentId: 1,
                     title: "The Dark Knight", subtitle: "2008 \u{2022} Action",
-                    thumbnailPath: nil, status: .downloading,
+                    thumbnailPath: nil, downloadPath: nil, status: .downloading,
                     fileSize: 2_500_000_000, bytesDownloaded: 1_250_000_000,
                     localFileName: nil, downloadedAt: nil, errorMessage: nil
                 ),
-                onPause: {}, onResume: {}, onCancel: {}, onRetry: {}, onDelete: {}
+                onCancel: {}, onRetry: {}, onDelete: {}
             )
 
             DownloadRow(
                 record: DownloadRecord(
                     id: "2", contentType: .musicTrack, contentId: 2,
                     title: "Bohemian Rhapsody", subtitle: "Queen",
-                    thumbnailPath: nil, status: .completed,
+                    thumbnailPath: nil, downloadPath: nil, status: .completed,
                     fileSize: 12_400_000, bytesDownloaded: 12_400_000,
                     localFileName: "song.mp3", downloadedAt: Date(), errorMessage: nil
                 ),
-                onPause: {}, onResume: {}, onCancel: {}, onRetry: {}, onDelete: {}
+                onCancel: {}, onRetry: {}, onDelete: {}
             )
 
             DownloadRow(
                 record: DownloadRecord(
                     id: "3", contentType: .book, contentId: 3,
                     title: "Dune", subtitle: "Frank Herbert",
-                    thumbnailPath: nil, status: .failed,
+                    thumbnailPath: nil, downloadPath: nil, status: .failed,
                     fileSize: 5_000_000, bytesDownloaded: 2_000_000,
                     localFileName: nil, downloadedAt: nil, errorMessage: "Connection lost"
                 ),
-                onPause: {}, onResume: {}, onCancel: {}, onRetry: {}, onDelete: {}
+                onCancel: {}, onRetry: {}, onDelete: {}
             )
         }
         .padding()

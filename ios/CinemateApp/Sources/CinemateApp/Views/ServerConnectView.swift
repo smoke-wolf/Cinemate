@@ -246,7 +246,6 @@ struct ServerConnectView: View {
     private func checkSavedServer() {
         if let savedURL = UserDefaults.standard.string(forKey: "savedServerURL") {
             manualURL = savedURL
-            connectToServer(url: savedURL)
         }
     }
 

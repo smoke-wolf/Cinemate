@@ -67,10 +67,8 @@ struct DownloadsView: View {
                         ForEach(activeDownloads) { record in
                             DownloadRow(
                                 record: record,
-                                onPause: { downloadManager.pauseDownload(id: record.id) },
-                                onResume: { downloadManager.resumeDownload(id: record.id) },
                                 onCancel: { downloadManager.cancelDownload(id: record.id) },
-                                onRetry: { retryDownload(record) },
+                                onRetry: { downloadManager.retryDownload(id: record.id) },
                                 onDelete: { downloadManager.deleteDownload(id: record.id) }
                             )
                         }
@@ -159,8 +157,6 @@ struct DownloadsView: View {
                 ForEach(items) { record in
                     DownloadRow(
                         record: record,
-                        onPause: {},
-                        onResume: {},
                         onCancel: {},
                         onRetry: {},
                         onDelete: { downloadManager.deleteDownload(id: record.id) }
@@ -281,19 +277,6 @@ struct DownloadsView: View {
     }
 
     // MARK: - Helpers
-
-    private func retryDownload(_ record: DownloadRecord) {
-        downloadManager.deleteDownload(id: record.id)
-        downloadManager.enqueueDownload(
-            contentType: record.contentType,
-            contentId: record.contentId,
-            title: record.title,
-            subtitle: record.subtitle,
-            thumbnailPath: record.thumbnailPath,
-            fileSize: record.fileSize,
-            downloadPath: "/api/sync/downloads/\(record.id)/file"
-        )
-    }
 
     private func clearAllDownloads() {
         hapticNotification(.warning)

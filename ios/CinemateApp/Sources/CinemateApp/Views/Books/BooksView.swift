@@ -5,9 +5,13 @@ struct BooksView: View {
     let account: Account
     @State private var books: [Book] = []
     @State private var isLoading = false
+    @State private var isLoadingMore = false
+    @State private var hasMore = true
+    @State private var totalBooks = 0
     @State private var selectedFilter: BookFilter = .all
     @State private var selectedBook: Book?
     @State private var sortOrder: SortOrder = .recent
+    private let pageSize = 40
 
     enum BookFilter: String, CaseIterable {
         case all = "All"
@@ -120,13 +124,25 @@ struct BooksView: View {
                                     BookCard(book: book) {
                                         selectedBook = book
                                     }
+                                    .onAppear {
+                                        if book.id == filteredBooks.last?.id && hasMore && !isLoadingMore {
+                                            Task { await loadMoreBooks() }
+                                        }
+                                    }
                                 }
                             }
                             .padding(.horizontal, 20)
-                            .padding(.bottom, 100)
+
+                            if isLoadingMore {
+                                ProgressView()
+                                    .tint(Theme.primaryGold)
+                                    .padding(.vertical, 20)
+                            }
+
+                            Spacer().frame(height: 100)
                         }
                         .refreshable {
-                            await loadBooks()
+                            await loadBooks(reset: true)
                         }
                     }
                 }
@@ -166,14 +182,32 @@ struct BooksView: View {
         }
     }
 
-    private func loadBooks() async {
+    private func loadBooks(reset: Bool = false) async {
+        if reset {
+            books = []
+            hasMore = true
+        }
         isLoading = true
         defer { isLoading = false }
         do {
-            books = try await apiClient.getBooks()
-        } catch {
-            // API error — show empty state
-        }
+            let accountId = Int(account.id) ?? 0
+            let response = try await apiClient.getBooks(accountId: accountId, limit: pageSize, offset: 0)
+            books = response.items
+            totalBooks = response.total
+            hasMore = books.count < totalBooks
+        } catch {}
+    }
+
+    private func loadMoreBooks() async {
+        guard hasMore, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let accountId = Int(account.id) ?? 0
+            let response = try await apiClient.getBooks(accountId: accountId, limit: pageSize, offset: books.count)
+            books.append(contentsOf: response.items)
+            hasMore = books.count < response.total
+        } catch {}
     }
 }
 

@@ -13,6 +13,9 @@ struct MoviePlayerView: View {
     @State private var totalDuration: TimeInterval = 0
     @State private var isPlaying = false
     @State private var isFillMode = false
+    @State private var playerError: String?
+    @State private var statusObserver: NSKeyValueObservation?
+    @State private var errorObserver: NSKeyValueObservation?
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
@@ -26,6 +29,7 @@ struct MoviePlayerView: View {
                     player: player,
                     videoGravity: isFillMode ? .resizeAspectFill : .resizeAspect
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
                 .onTapGesture {
                     withAnimation(.easeInOut(duration: 0.3)) {
@@ -37,6 +41,24 @@ struct MoviePlayerView: View {
                 VideoPlayer(player: player)
                     .ignoresSafeArea()
                 #endif
+            } else if let error = playerError {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 44))
+                        .foregroundStyle(Theme.error)
+                    Text("Playback Error")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text(error)
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 40)
+                    Button("Dismiss") { dismiss() }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.primaryGold)
+                        .padding(.top, 8)
+                }
             } else {
                 ProgressView()
                     .tint(Theme.primaryGold)
@@ -55,6 +77,8 @@ struct MoviePlayerView: View {
         }
         .onDisappear {
             saveProgress()
+            statusObserver?.invalidate()
+            errorObserver?.invalidate()
             player?.pause()
             player = nil
             restorePortrait()
@@ -176,23 +200,43 @@ struct MoviePlayerView: View {
     }
 
     private func setupPlayer() {
-        guard let streamURLString = movie.streamURL else { return }
-        let transcodeURL = streamURLString.replacingOccurrences(
+        guard let streamURLString = movie.streamURL else {
+            playerError = "No stream URL available for this movie."
+            return
+        }
+
+        let transcodeURLString = streamURLString.replacingOccurrences(
             of: "/api/stream/\(movie.id)",
             with: "/api/stream/\(movie.id)/transcode"
         )
-        guard let url = URL(string: transcodeURL.contains("/transcode") ? transcodeURL : streamURLString) else { return }
+        let finalURLString = transcodeURLString.contains("/transcode") ? transcodeURLString : streamURLString
 
-        let avPlayer = AVPlayer(url: url)
-        self.player = avPlayer
-
-        // Seek to last position
-        if movie.watchProgress > 0, let duration = movie.duration {
-            let seekTime = CMTime(seconds: duration * movie.watchProgress, preferredTimescale: 600)
-            avPlayer.seek(to: seekTime)
+        guard let url = URL(string: finalURLString) else {
+            playerError = "Invalid stream URL."
+            return
         }
 
-        // Time observer
+        let avPlayer = AVPlayer(url: url)
+
+        statusObserver = avPlayer.currentItem?.observe(\.status, options: [.new]) { item, _ in
+            DispatchQueue.main.async {
+                switch item.status {
+                case .failed:
+                    self.player = nil
+                    self.playerError = item.error?.localizedDescription ?? "Playback failed"
+                case .readyToPlay:
+                    if self.movie.watchProgress > 0, let duration = self.movie.duration {
+                        let seekTime = CMTime(seconds: duration * self.movie.watchProgress, preferredTimescale: 600)
+                        avPlayer.seek(to: seekTime)
+                    }
+                default:
+                    break
+                }
+            }
+        }
+
+        self.player = avPlayer
+
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         avPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
             self.currentTime = time.seconds.isNaN ? 0 : time.seconds

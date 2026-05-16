@@ -190,8 +190,8 @@ struct ArtistView: View {
 
     private func loadAlbums() async {
         do {
-            let allAlbums = try await apiClient.getAlbums()
-            albums = allAlbums.filter { $0.artist.localizedCaseInsensitiveCompare(artist.name) == .orderedSame }
+            let allAlbums = try await apiClient.getAlbums(limit: 500)
+            albums = allAlbums.items.filter { $0.artist.localizedCaseInsensitiveCompare(artist.name) == .orderedSame }
         } catch {}
     }
 }

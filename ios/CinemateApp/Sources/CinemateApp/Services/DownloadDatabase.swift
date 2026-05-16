@@ -37,6 +37,7 @@ final class DownloadDatabase {
             title TEXT NOT NULL,
             subtitle TEXT,
             thumbnail_path TEXT,
+            download_path TEXT,
             status TEXT NOT NULL DEFAULT 'queued',
             file_size INTEGER NOT NULL DEFAULT 0,
             bytes_downloaded INTEGER NOT NULL DEFAULT 0,
@@ -46,6 +47,7 @@ final class DownloadDatabase {
         );
         """
         execute(sql)
+        execute("ALTER TABLE downloads ADD COLUMN download_path TEXT;")
     }
 
     // MARK: - CRUD
@@ -53,9 +55,9 @@ final class DownloadDatabase {
     func insert(_ record: DownloadRecord) {
         let sql = """
         INSERT OR REPLACE INTO downloads
-            (id, content_type, content_id, title, subtitle, thumbnail_path,
+            (id, content_type, content_id, title, subtitle, thumbnail_path, download_path,
              status, file_size, bytes_downloaded, local_file_name, downloaded_at, error_message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
@@ -70,16 +72,17 @@ final class DownloadDatabase {
         sqlite3_bind_text(stmt, 4, (record.title as NSString).utf8String, -1, nil)
         bindOptionalText(stmt, index: 5, value: record.subtitle)
         bindOptionalText(stmt, index: 6, value: record.thumbnailPath)
-        sqlite3_bind_text(stmt, 7, (record.status.rawValue as NSString).utf8String, -1, nil)
-        sqlite3_bind_int64(stmt, 8, record.fileSize)
-        sqlite3_bind_int64(stmt, 9, record.bytesDownloaded)
-        bindOptionalText(stmt, index: 10, value: record.localFileName)
+        bindOptionalText(stmt, index: 7, value: record.downloadPath)
+        sqlite3_bind_text(stmt, 8, (record.status.rawValue as NSString).utf8String, -1, nil)
+        sqlite3_bind_int64(stmt, 9, record.fileSize)
+        sqlite3_bind_int64(stmt, 10, record.bytesDownloaded)
+        bindOptionalText(stmt, index: 11, value: record.localFileName)
         if let downloadedAt = record.downloadedAt {
-            sqlite3_bind_double(stmt, 11, downloadedAt.timeIntervalSince1970)
+            sqlite3_bind_double(stmt, 12, downloadedAt.timeIntervalSince1970)
         } else {
-            sqlite3_bind_null(stmt, 11)
+            sqlite3_bind_null(stmt, 12)
         }
-        bindOptionalText(stmt, index: 12, value: record.errorMessage)
+        bindOptionalText(stmt, index: 13, value: record.errorMessage)
 
         if sqlite3_step(stmt) != SQLITE_DONE {
             printError("insert step")
@@ -188,13 +191,14 @@ final class DownloadDatabase {
         let title = columnText(stmt, index: 3) ?? ""
         let subtitle = columnText(stmt, index: 4)
         let thumbnailPath = columnText(stmt, index: 5)
-        let statusRaw = columnText(stmt, index: 6) ?? "queued"
-        let fileSize = sqlite3_column_int64(stmt, 7)
-        let bytesDownloaded = sqlite3_column_int64(stmt, 8)
-        let localFileName = columnText(stmt, index: 9)
-        let downloadedAtRaw = sqlite3_column_type(stmt, 10) == SQLITE_NULL
-            ? nil : sqlite3_column_double(stmt, 10)
-        let errorMessage = columnText(stmt, index: 11)
+        let downloadPath = columnText(stmt, index: 6)
+        let statusRaw = columnText(stmt, index: 7) ?? "queued"
+        let fileSize = sqlite3_column_int64(stmt, 8)
+        let bytesDownloaded = sqlite3_column_int64(stmt, 9)
+        let localFileName = columnText(stmt, index: 10)
+        let downloadedAtRaw = sqlite3_column_type(stmt, 11) == SQLITE_NULL
+            ? nil : sqlite3_column_double(stmt, 11)
+        let errorMessage = columnText(stmt, index: 12)
 
         return DownloadRecord(
             id: id,
@@ -203,6 +207,7 @@ final class DownloadDatabase {
             title: title,
             subtitle: subtitle,
             thumbnailPath: thumbnailPath,
+            downloadPath: downloadPath,
             status: DownloadStatus(rawValue: statusRaw) ?? .queued,
             fileSize: fileSize,
             bytesDownloaded: bytesDownloaded,

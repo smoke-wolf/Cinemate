@@ -86,7 +86,7 @@ struct AlbumView: View {
         .cinemateToolbarColorScheme(.dark)
         .task {
             do {
-                tracks = try await apiClient.getMusicTracks(albumId: album.id)
+                tracks = try await apiClient.getMusicTracks(albumId: album.id, limit: 500).items
             } catch {}
         }
     }

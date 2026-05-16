@@ -14,8 +14,8 @@ struct DownloadButton: View {
     @EnvironmentObject var downloadManager: DownloadManager
 
     enum Style {
-        case compact   // Icon-sized for card overlays
-        case expanded  // Slightly larger for detail views
+        case compact
+        case expanded
     }
 
     private var record: DownloadRecord? {
@@ -35,32 +35,34 @@ struct DownloadButton: View {
         style == .compact ? 2.5 : 3.0
     }
 
+    private var isInteractive: Bool {
+        switch record?.status {
+        case .downloading, .queued, .completed, .paused:
+            return false
+        default:
+            return true
+        }
+    }
+
     var body: some View {
         Button(action: handleTap) {
             ZStack {
-                // Background circle
                 Circle()
                     .fill(backgroundColor)
                     .frame(width: buttonSize, height: buttonSize)
 
-                // State-specific content
                 switch record?.status {
                 case .downloading:
                     downloadingState
 
-                case .paused:
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: iconSize - 2, weight: .semibold))
-                        .foregroundStyle(Theme.warmAmber)
-
-                case .queued:
+                case .queued, .paused:
                     ProgressView()
                         .scaleEffect(style == .compact ? 0.6 : 0.7)
-                        .tint(Theme.textSecondary)
+                        .tint(Theme.primaryGold)
 
                 case .completed:
-                    Image(systemName: "checkmark")
-                        .font(.system(size: iconSize - 1, weight: .bold))
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: iconSize + 2, weight: .bold))
                         .foregroundStyle(Theme.success)
 
                 case .failed:
@@ -76,40 +78,28 @@ struct DownloadButton: View {
             }
         }
         .buttonStyle(PressableButtonStyle())
+        .disabled(!isInteractive)
+        .opacity(isInteractive ? 1.0 : 0.85)
     }
-
-    // MARK: - Downloading State (circular progress ring)
 
     private var downloadingState: some View {
         ZStack {
-            // Track ring
             Circle()
                 .stroke(Theme.textTertiary.opacity(0.3), lineWidth: ringLineWidth)
                 .frame(width: buttonSize - 6, height: buttonSize - 6)
 
-            // Progress ring
             Circle()
-                .trim(from: 0, to: record?.progress ?? 0)
+                .trim(from: 0, to: max(0.05, record?.progress ?? 0))
                 .stroke(Theme.primaryGold, style: StrokeStyle(lineWidth: ringLineWidth, lineCap: .round))
                 .frame(width: buttonSize - 6, height: buttonSize - 6)
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.3), value: record?.progress)
 
-            // Percentage text (only in expanded)
-            if style == .expanded {
-                Text("\(Int((record?.progress ?? 0) * 100))")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundStyle(Theme.textPrimary)
-            } else {
-                // Pause icon hint
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(Theme.textSecondary)
-            }
+            Image(systemName: "xmark")
+                .font(.system(size: style == .compact ? 7 : 9, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
         }
     }
-
-    // MARK: - Background
 
     private var backgroundColor: Color {
         switch record?.status {
@@ -118,19 +108,16 @@ struct DownloadButton: View {
         case .failed:
             return Theme.error.opacity(0.15)
         case .downloading, .paused, .queued:
-            return Theme.elevatedSurface.opacity(0.9)
+            return Theme.primaryGold.opacity(0.15)
         case .cancelled, nil:
             return Theme.elevatedSurface.opacity(0.9)
         }
     }
 
-    // MARK: - Action
-
     private func handleTap() {
         hapticImpact(.light)
 
         guard let record = record else {
-            // Not downloaded -- enqueue
             downloadManager.enqueueDownload(
                 contentType: contentType,
                 contentId: contentId,
@@ -144,26 +131,9 @@ struct DownloadButton: View {
         }
 
         switch record.status {
-        case .downloading:
-            downloadManager.pauseDownload(id: record.id)
-        case .paused:
-            downloadManager.resumeDownload(id: record.id)
         case .failed, .cancelled:
-            downloadManager.deleteDownload(id: record.id)
-            downloadManager.enqueueDownload(
-                contentType: contentType,
-                contentId: contentId,
-                title: title,
-                subtitle: subtitle,
-                thumbnailPath: thumbnailPath,
-                fileSize: fileSize,
-                downloadPath: downloadPath
-            )
-        case .completed:
-            // Already downloaded, no action
-            break
-        case .queued:
-            // Waiting in queue, no action
+            downloadManager.retryDownload(id: record.id)
+        case .downloading, .queued, .paused, .completed:
             break
         }
     }

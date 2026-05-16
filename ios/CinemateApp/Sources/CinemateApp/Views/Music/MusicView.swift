@@ -11,6 +11,11 @@ struct MusicView: View {
     @State private var recentTracks: [MusicTrack] = []
     @State private var playlists: [Playlist] = []
     @State private var isLoading = false
+    @State private var isLoadingMoreAlbums = false
+    @State private var isLoadingMoreArtists = false
+    @State private var hasMoreAlbums = true
+    @State private var hasMoreArtists = true
+    private let pageSize = 40
 
     enum MusicTab: String, CaseIterable {
         case recents = "Recents"
@@ -122,51 +127,64 @@ struct MusicView: View {
     }
 
     private var artistsList: some View {
-        LazyVStack(spacing: 8) {
-            ForEach(artists) { artist in
-                NavigationLink(destination: ArtistView(artist: artist)) {
-                    HStack(spacing: 14) {
-                        // Artist avatar
-                        CachedAsyncImage(url: apiClient.artistImageURL(name: artist.name)) {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [Theme.cardSurface, Theme.elevatedSurface],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
+        VStack(spacing: 0) {
+            LazyVStack(spacing: 8) {
+                ForEach(artists) { artist in
+                    NavigationLink(destination: ArtistView(artist: artist)) {
+                        HStack(spacing: 14) {
+                            CachedAsyncImage(url: apiClient.artistImageURL(name: artist.name)) {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Theme.cardSurface, Theme.elevatedSurface],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
                                     )
-                                )
-                                .frame(width: 52, height: 52)
-                                .overlay {
-                                    Image(systemName: "music.mic")
-                                        .font(.system(size: 20))
-                                        .foregroundStyle(Theme.textTertiary)
-                                }
+                                    .frame(width: 52, height: 52)
+                                    .overlay {
+                                        Image(systemName: "music.mic")
+                                            .font(.system(size: 20))
+                                            .foregroundStyle(Theme.textTertiary)
+                                    }
+                            }
+                            .frame(width: 52, height: 52)
+                            .clipShape(Circle())
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(artist.name)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                Text("\(artist.albumCount) albums \u{2022} \(artist.trackCount) tracks")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textTertiary)
                         }
-                        .frame(width: 52, height: 52)
-                        .clipShape(Circle())
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(artist.name)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
-                            Text("\(artist.albumCount) albums \u{2022} \(artist.trackCount) tracks")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.textTertiary)
+                        .padding(.horizontal)
+                        .padding(.vertical, 6)
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
+                    .onAppear {
+                        if artist.id == artists.last?.id && hasMoreArtists && !isLoadingMoreArtists {
+                            Task { await loadMoreArtists() }
+                        }
+                    }
                 }
             }
+
+            if isLoadingMoreArtists {
+                ProgressView()
+                    .tint(Theme.primaryGold)
+                    .padding(.vertical, 20)
+            }
+
+            Spacer().frame(height: 140)
         }
-        .padding(.bottom, 140)
     }
 
     private var albumsContent: some View {
@@ -202,10 +220,22 @@ struct MusicView: View {
                             }
                         }
                         .buttonStyle(PressableButtonStyle())
+                        .onAppear {
+                            if album.id == albums.last?.id && hasMoreAlbums && !isLoadingMoreAlbums {
+                                Task { await loadMoreAlbums() }
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal)
-                .padding(.bottom, 140)
+
+                if isLoadingMoreAlbums {
+                    ProgressView()
+                        .tint(Theme.primaryGold)
+                        .padding(.vertical, 20)
+                }
+
+                Spacer().frame(height: 140)
             }
         }
     }
@@ -287,14 +317,44 @@ struct MusicView: View {
         isLoading = true
         defer { isLoading = false }
         let accountId = Int(account.id) ?? 0
-        async let a = apiClient.getAlbums()
-        async let b = apiClient.getArtists()
+        async let a = apiClient.getAlbums(limit: pageSize, offset: 0)
+        async let b = apiClient.getArtists(limit: pageSize, offset: 0)
         async let c = try? apiClient.getRecentTracks(accountId: accountId)
         async let d = try? apiClient.getPlaylists(accountId: accountId)
-        do { albums = try await a } catch {}
-        do { artists = try await b } catch {}
+        do {
+            let albumResponse = try await a
+            albums = albumResponse.items
+            hasMoreAlbums = albums.count < albumResponse.total
+        } catch {}
+        do {
+            let artistResponse = try await b
+            artists = artistResponse.items
+            hasMoreArtists = artists.count < artistResponse.total
+        } catch {}
         recentTracks = await c ?? []
         playlists = await d ?? []
+    }
+
+    private func loadMoreAlbums() async {
+        guard hasMoreAlbums, !isLoadingMoreAlbums else { return }
+        isLoadingMoreAlbums = true
+        defer { isLoadingMoreAlbums = false }
+        do {
+            let response = try await apiClient.getAlbums(limit: pageSize, offset: albums.count)
+            albums.append(contentsOf: response.items)
+            hasMoreAlbums = albums.count < response.total
+        } catch {}
+    }
+
+    private func loadMoreArtists() async {
+        guard hasMoreArtists, !isLoadingMoreArtists else { return }
+        isLoadingMoreArtists = true
+        defer { isLoadingMoreArtists = false }
+        do {
+            let response = try await apiClient.getArtists(limit: pageSize, offset: artists.count)
+            artists.append(contentsOf: response.items)
+            hasMoreArtists = artists.count < response.total
+        } catch {}
     }
 }
 
