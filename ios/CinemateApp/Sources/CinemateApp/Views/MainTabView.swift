@@ -4,6 +4,7 @@ import UIKit
 struct MainTabView: View {
     @EnvironmentObject var apiClient: APIClient
     @EnvironmentObject var audioPlayer: AudioPlayer
+    @EnvironmentObject var downloadManager: DownloadManager
     let account: Account
 
     @State private var selectedTab: Tab = .movies
@@ -74,6 +75,7 @@ struct MainTabView: View {
             NowPlayingView(account: account)
         }
         .task {
+            downloadManager.configure(serverBaseURL: apiClient.baseURL)
             await registerAndStartHeartbeat()
         }
         .onDisappear {

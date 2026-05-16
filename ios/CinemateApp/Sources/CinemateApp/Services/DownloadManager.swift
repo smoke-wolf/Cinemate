@@ -164,7 +164,7 @@ final class DownloadManager: ObservableObject {
     func refreshState() {
         let all = db.fetchAll()
         activeDownloads = all.filter {
-            $0.status == .queued || $0.status == .downloading || $0.status == .paused
+            $0.status == .queued || $0.status == .downloading || $0.status == .paused || $0.status == .failed
         }
         completedDownloads = all.filter { $0.status == .completed }
         isDownloading = activeDownloads.contains { $0.status == .downloading }
