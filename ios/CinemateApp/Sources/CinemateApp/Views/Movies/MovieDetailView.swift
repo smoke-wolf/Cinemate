@@ -3,6 +3,7 @@ import SwiftUI
 struct MovieDetailView: View {
     @EnvironmentObject var apiClient: APIClient
     let movie: MediaItem
+    let account: Account
 
     @State private var isFavorite: Bool
     @State private var isWatched: Bool
@@ -10,8 +11,9 @@ struct MovieDetailView: View {
     @State private var descriptionExpanded = false
     @State private var scrollOffset: CGFloat = 0
 
-    init(movie: MediaItem) {
+    init(movie: MediaItem, account: Account) {
         self.movie = movie
+        self.account = account
         _isFavorite = State(initialValue: movie.isFavorite)
         _isWatched = State(initialValue: movie.isWatched)
     }
@@ -28,7 +30,7 @@ struct MovieDetailView: View {
                         let heroHeight: CGFloat = 280
 
                         ZStack(alignment: .bottom) {
-                            CachedAsyncImage(url: apiClient.thumbnailURL(for: movie.thumbnailURL)) {
+                            CachedAsyncImage(url: URL(string: movie.thumbnailURL ?? "")) {
                                 MediaPlaceholder(icon: "film")
                             }
                             .frame(
@@ -58,13 +60,13 @@ struct MovieDetailView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         // Title + Meta
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(movie.title)
+                            Text(movie.cleanTitle)
                                 .font(.system(size: 28, weight: .bold))
                                 .foregroundStyle(Theme.textPrimary)
 
                             HStack(spacing: 12) {
                                 if let year = movie.year {
-                                    Text("\(year)")
+                                    Text(String(year))
                                         .font(.system(size: 14))
                                         .foregroundStyle(Theme.textSecondary)
                                 }
@@ -128,6 +130,12 @@ struct MovieDetailView: View {
                             Button(action: {
                                 isFavorite.toggle()
                                 hapticImpact(.medium)
+                                Task {
+                                    try? await apiClient.toggleFavorite(
+                                        accountId: Int(account.id) ?? 0,
+                                        movieId: movie.id
+                                    )
+                                }
                             }) {
                                 VStack(spacing: 4) {
                                     Image(systemName: isFavorite ? "heart.fill" : "heart")
@@ -193,11 +201,13 @@ struct MovieDetailView: View {
         .cinemateToolbarColorScheme(.dark)
         #if os(iOS)
         .fullScreenCover(isPresented: $showPlayer) {
-            MoviePlayerView(movie: movie)
+            MoviePlayerView(movie: movie, account: account)
+                .environmentObject(apiClient)
         }
         #else
         .sheet(isPresented: $showPlayer) {
-            MoviePlayerView(movie: movie)
+            MoviePlayerView(movie: movie, account: account)
+                .environmentObject(apiClient)
         }
         #endif
     }
@@ -205,7 +215,7 @@ struct MovieDetailView: View {
 
 #Preview {
     NavigationStack {
-        MovieDetailView(movie: .preview)
+        MovieDetailView(movie: .preview, account: Account.previewAccounts[0])
             .environmentObject(APIClient())
     }
     .preferredColorScheme(.dark)

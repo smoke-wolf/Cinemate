@@ -84,6 +84,38 @@ struct MusicArtist: Identifiable, Hashable {
     }
 }
 
+// MARK: - Artist Profile (enriched)
+
+struct ArtistProfile: Codable {
+    let name: String
+    let bio: String?
+    let imageURL: String?
+    let genres: [String]
+    let popularity: Int?
+    let followers: Int?
+    let wikipediaURL: String?
+    let trackCount: Int
+    let albumCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name, bio, genres, popularity, followers
+        case imageURL = "image_url"
+        case wikipediaURL = "wikipedia_url"
+        case trackCount = "track_count"
+        case albumCount = "album_count"
+    }
+
+    var formattedFollowers: String? {
+        guard let followers, followers > 0 else { return nil }
+        if followers >= 1_000_000 {
+            return String(format: "%.1fM fans", Double(followers) / 1_000_000)
+        } else if followers >= 1_000 {
+            return String(format: "%.0fK fans", Double(followers) / 1_000)
+        }
+        return "\(followers) fans"
+    }
+}
+
 // MARK: - Playlist
 
 struct Playlist: Identifiable, Hashable, Codable {

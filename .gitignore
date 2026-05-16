@@ -38,3 +38,7 @@ out/
 *.dmg
 *.exe
 *.msi
+windows/release/
+
+# Database
+server/cinemate.db

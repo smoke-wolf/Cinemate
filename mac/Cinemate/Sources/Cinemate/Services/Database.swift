@@ -1,6 +1,7 @@
 import Foundation
 import SQLite
 import CommonCrypto
+import AppKit
 
 struct TimestampComment: Identifiable {
     let id: Int64
@@ -79,6 +80,43 @@ final class Database {
     private let colAMTotalWatchTime = SQLite.Expression<Double>("total_watch_time")
     private let colAMRating = SQLite.Expression<Int?>("rating")
 
+    // Downloads table
+    private let downloadsTable = Table("downloads")
+    private let colDlId = SQLite.Expression<String>("id")
+    private let colDlContentType = SQLite.Expression<String>("content_type")
+    private let colDlContentId = SQLite.Expression<Int64>("content_id")
+    private let colDlTitle = SQLite.Expression<String>("title")
+    private let colDlSubtitle = SQLite.Expression<String?>("subtitle")
+    private let colDlStatus = SQLite.Expression<String>("status")
+    private let colDlFileSize = SQLite.Expression<Int64>("file_size")
+    private let colDlBytesDownloaded = SQLite.Expression<Int64>("bytes_downloaded")
+    private let colDlLocalFilePath = SQLite.Expression<String?>("local_file_path")
+    private let colDlServerURL = SQLite.Expression<String?>("server_url")
+    private let colDlSourcePath = SQLite.Expression<String?>("source_path")
+    private let colDlCreatedAt = SQLite.Expression<Double>("created_at")
+    private let colDlCompletedAt = SQLite.Expression<Double?>("completed_at")
+    private let colDlErrorMessage = SQLite.Expression<String?>("error_message")
+
+    // Known devices table
+    private let knownDevicesTable = Table("known_devices")
+    private let colDevId = SQLite.Expression<String>("id")
+    private let colDevName = SQLite.Expression<String>("name")
+    private let colDevType = SQLite.Expression<String>("device_type")
+    private let colDevAccountId = SQLite.Expression<Int64?>("account_id")
+    private let colDevIsOnline = SQLite.Expression<Bool>("is_online")
+    private let colDevLastSeen = SQLite.Expression<Double>("last_seen")
+
+    // Artist profile cache table
+    private let artistProfilesTable = Table("artist_profiles")
+    private let colApName = SQLite.Expression<String>("name")
+    private let colApBio = SQLite.Expression<String?>("bio")
+    private let colApImagePath = SQLite.Expression<String?>("image_path")
+    private let colApGenres = SQLite.Expression<String>("genres") // JSON array
+    private let colApPopularity = SQLite.Expression<Int?>("popularity")
+    private let colApFollowers = SQLite.Expression<Int?>("followers")
+    private let colApWikipediaURL = SQLite.Expression<String?>("wikipedia_url")
+    private let colApCachedAt = SQLite.Expression<Double>("cached_at")
+
     private init() {
         let dbDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Cinemate", isDirectory: true)
@@ -152,6 +190,48 @@ final class Database {
             t.column(colAMTotalWatchTime, defaultValue: 0)
             t.column(colAMRating)
             t.primaryKey(colAMAccountId, colAMMediaId)
+        })
+
+        // Downloads tracking table
+        try! db.run(downloadsTable.create(ifNotExists: true) { t in
+            t.column(colDlId, primaryKey: true)
+            t.column(colDlContentType)
+            t.column(colDlContentId)
+            t.column(colDlTitle)
+            t.column(colDlSubtitle)
+            t.column(colDlStatus, defaultValue: "queued")
+            t.column(colDlFileSize, defaultValue: 0)
+            t.column(colDlBytesDownloaded, defaultValue: 0)
+            t.column(colDlLocalFilePath)
+            t.column(colDlServerURL)
+            t.column(colDlSourcePath)
+            t.column(colDlCreatedAt)
+            t.column(colDlCompletedAt)
+            t.column(colDlErrorMessage)
+        })
+        try? db.run(downloadsTable.createIndex(colDlStatus, ifNotExists: true))
+        try? db.run(downloadsTable.createIndex(colDlCreatedAt, ifNotExists: true))
+
+        // Known devices cache
+        try! db.run(knownDevicesTable.create(ifNotExists: true) { t in
+            t.column(colDevId, primaryKey: true)
+            t.column(colDevName)
+            t.column(colDevType)
+            t.column(colDevAccountId)
+            t.column(colDevIsOnline, defaultValue: false)
+            t.column(colDevLastSeen)
+        })
+
+        // Artist profile cache
+        try! db.run(artistProfilesTable.create(ifNotExists: true) { t in
+            t.column(colApName, primaryKey: true)
+            t.column(colApBio)
+            t.column(colApImagePath)
+            t.column(colApGenres, defaultValue: "[]")
+            t.column(colApPopularity)
+            t.column(colApFollowers)
+            t.column(colApWikipediaURL)
+            t.column(colApCachedAt)
         })
     }
 
@@ -825,6 +905,256 @@ final class Database {
                 text: row[colCommentText],
                 createdAt: Date(timeIntervalSince1970: row[colCommentCreatedAt])
             )
+        }
+    }
+
+    // MARK: - Downloads
+
+    func insertDownload(
+        id: String, contentType: String, contentId: Int64, title: String,
+        subtitle: String?, fileSize: Int64, serverURL: String?, sourcePath: String?
+    ) {
+        try? db.run(downloadsTable.insert(
+            colDlId <- id,
+            colDlContentType <- contentType,
+            colDlContentId <- contentId,
+            colDlTitle <- title,
+            colDlSubtitle <- subtitle,
+            colDlStatus <- "queued",
+            colDlFileSize <- fileSize,
+            colDlBytesDownloaded <- Int64(0),
+            colDlServerURL <- serverURL,
+            colDlSourcePath <- sourcePath,
+            colDlCreatedAt <- Date().timeIntervalSince1970
+        ))
+    }
+
+    func updateDownloadStatus(id: String, status: String) {
+        try? db.run(downloadsTable.filter(colDlId == id).update(colDlStatus <- status))
+    }
+
+    func updateDownloadProgress(id: String, bytesDownloaded: Int64) {
+        try? db.run(downloadsTable.filter(colDlId == id).update(
+            colDlBytesDownloaded <- bytesDownloaded
+        ))
+    }
+
+    func completeDownload(id: String, localFilePath: String) {
+        let now = Date().timeIntervalSince1970
+        try? db.run(downloadsTable.filter(colDlId == id).update(
+            colDlStatus <- "completed",
+            colDlLocalFilePath <- localFilePath,
+            colDlCompletedAt <- now
+        ))
+    }
+
+    func failDownload(id: String, error: String) {
+        try? db.run(downloadsTable.filter(colDlId == id).update(
+            colDlStatus <- "failed",
+            colDlErrorMessage <- error
+        ))
+    }
+
+    func deleteDownload(id: String) {
+        try? db.run(downloadsTable.filter(colDlId == id).delete())
+    }
+
+    func allDownloads(status: String? = nil) -> [MacDownloadRecord] {
+        var query = downloadsTable.order(colDlCreatedAt.desc)
+        if let s = status {
+            query = downloadsTable.filter(colDlStatus == s).order(colDlCreatedAt.desc)
+        }
+        guard let rows = try? db.prepare(query) else { return [] }
+        return rows.map { row in
+            MacDownloadRecord(
+                id: row[colDlId],
+                contentType: row[colDlContentType],
+                contentId: row[colDlContentId],
+                title: row[colDlTitle],
+                subtitle: row[colDlSubtitle],
+                status: row[colDlStatus],
+                fileSize: row[colDlFileSize],
+                bytesDownloaded: row[colDlBytesDownloaded],
+                localFilePath: row[colDlLocalFilePath],
+                serverURL: row[colDlServerURL],
+                sourcePath: row[colDlSourcePath],
+                createdAt: Date(timeIntervalSince1970: row[colDlCreatedAt]),
+                completedAt: row[colDlCompletedAt].map { Date(timeIntervalSince1970: $0) },
+                errorMessage: row[colDlErrorMessage]
+            )
+        }
+    }
+
+    func activeDownloadCount() -> Int {
+        let statuses = ["queued", "downloading", "paused"]
+        let query = downloadsTable.filter(statuses.contains(colDlStatus))
+        return (try? db.scalar(query.count)) ?? 0
+    }
+
+    // MARK: - Known Devices
+
+    func upsertDevice(id: String, name: String, deviceType: String, accountId: Int64?, isOnline: Bool) {
+        let existing = try? db.pluck(knownDevicesTable.filter(colDevId == id))
+        if existing != nil {
+            try? db.run(knownDevicesTable.filter(colDevId == id).update(
+                colDevName <- name,
+                colDevType <- deviceType,
+                colDevAccountId <- accountId,
+                colDevIsOnline <- isOnline,
+                colDevLastSeen <- Date().timeIntervalSince1970
+            ))
+        } else {
+            try? db.run(knownDevicesTable.insert(
+                colDevId <- id,
+                colDevName <- name,
+                colDevType <- deviceType,
+                colDevAccountId <- accountId,
+                colDevIsOnline <- isOnline,
+                colDevLastSeen <- Date().timeIntervalSince1970
+            ))
+        }
+    }
+
+    func allDevices() -> [ConnectedDevice] {
+        let query = knownDevicesTable.order(colDevLastSeen.desc)
+        guard let rows = try? db.prepare(query) else { return [] }
+        return rows.map { row in
+            ConnectedDevice(
+                id: row[colDevId],
+                name: row[colDevName],
+                deviceType: row[colDevType],
+                accountId: row[colDevAccountId],
+                isOnline: row[colDevIsOnline],
+                lastSeen: Date(timeIntervalSince1970: row[colDevLastSeen])
+            )
+        }
+    }
+
+    func onlineDevices() -> [ConnectedDevice] {
+        let query = knownDevicesTable.filter(colDevIsOnline == true).order(colDevLastSeen.desc)
+        guard let rows = try? db.prepare(query) else { return [] }
+        return rows.map { row in
+            ConnectedDevice(
+                id: row[colDevId],
+                name: row[colDevName],
+                deviceType: row[colDevType],
+                accountId: row[colDevAccountId],
+                isOnline: row[colDevIsOnline],
+                lastSeen: Date(timeIntervalSince1970: row[colDevLastSeen])
+            )
+        }
+    }
+
+    func markAllDevicesOffline() {
+        try? db.run(knownDevicesTable.update(colDevIsOnline <- false))
+    }
+
+    func deleteDevice(id: String) {
+        _ = try? db.run(knownDevicesTable.filter(colDevId == id).delete())
+    }
+
+    // MARK: - Artist Profile Cache
+
+    private static let artistImageCacheDir: URL = {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cinemate")
+            .appendingPathComponent("thumbnails")
+            .appendingPathComponent("artists")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    /// Returns a cached ArtistProfile if it exists and is less than `maxAge` seconds old (default 7 days).
+    func cachedArtistProfile(name: String, maxAge: TimeInterval = 7 * 24 * 3600) -> (profile: ArtistProfile, imagePath: String?)? {
+        guard let row = try? db.pluck(artistProfilesTable.filter(colApName == name)) else { return nil }
+        let cachedAt = row[colApCachedAt]
+        if Date().timeIntervalSince1970 - cachedAt > maxAge { return nil } // stale
+
+        let genres: [String] = {
+            let raw = row[colApGenres]
+            guard let data = raw.data(using: .utf8),
+                  let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return arr
+        }()
+
+        let profile = ArtistProfile(
+            name: row[colApName],
+            bio: row[colApBio],
+            imageURL: nil, // not stored; we use local image path instead
+            genres: genres,
+            popularity: row[colApPopularity],
+            followers: row[colApFollowers],
+            wikipediaURL: row[colApWikipediaURL],
+            trackCount: 0,
+            albumCount: 0
+        )
+        return (profile, row[colApImagePath])
+    }
+
+    /// Save an ArtistProfile to the cache. `imagePath` is the local file path for the downloaded image.
+    func cacheArtistProfile(_ profile: ArtistProfile, imagePath: String?) {
+        let genresJSON: String = {
+            guard let data = try? JSONEncoder().encode(profile.genres) else { return "[]" }
+            return String(data: data, encoding: .utf8) ?? "[]"
+        }()
+
+        let existing = try? db.pluck(artistProfilesTable.filter(colApName == profile.name))
+        if existing != nil {
+            try? db.run(artistProfilesTable.filter(colApName == profile.name).update(
+                colApBio <- profile.bio,
+                colApImagePath <- imagePath,
+                colApGenres <- genresJSON,
+                colApPopularity <- profile.popularity,
+                colApFollowers <- profile.followers,
+                colApWikipediaURL <- profile.wikipediaURL,
+                colApCachedAt <- Date().timeIntervalSince1970
+            ))
+        } else {
+            try? db.run(artistProfilesTable.insert(
+                colApName <- profile.name,
+                colApBio <- profile.bio,
+                colApImagePath <- imagePath,
+                colApGenres <- genresJSON,
+                colApPopularity <- profile.popularity,
+                colApFollowers <- profile.followers,
+                colApWikipediaURL <- profile.wikipediaURL,
+                colApCachedAt <- Date().timeIntervalSince1970
+            ))
+        }
+    }
+
+    /// Returns the path for caching an artist image on disk.
+    static func artistImageCachePath(for artistName: String) -> URL {
+        let slug = artistName
+            .lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+        return artistImageCacheDir.appendingPathComponent("\(slug).jpg")
+    }
+
+    /// Download and cache an artist image to disk. Returns the local file path on success.
+    static func downloadAndCacheArtistImage(from urlString: String, artistName: String) async -> String? {
+        guard let url = URL(string: urlString) else { return nil }
+        let destURL = artistImageCachePath(for: artistName)
+
+        // If already cached on disk, return it
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            return destURL.path
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let image = NSImage(data: data) else { return nil }
+            guard let tiff = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else {
+                return nil
+            }
+            try jpegData.write(to: destURL)
+            return destURL.path
+        } catch {
+            return nil
         }
     }
 }

@@ -3,6 +3,12 @@ import AVFoundation
 import MediaPlayer
 import Combine
 
+struct LyricLine: Identifiable {
+    let id: Int
+    let time: TimeInterval
+    let text: String
+}
+
 @MainActor
 final class AudioPlayer: ObservableObject {
     @Published var currentTrack: MusicTrack?
@@ -12,12 +18,23 @@ final class AudioPlayer: ObservableObject {
     @Published var queue: [MusicTrack] = []
     @Published var isShuffled: Bool = false
     @Published var repeatMode: RepeatMode = .off
+    @Published var albumArtURL: URL?
+    @Published var volume: Float = 1.0 {
+        didSet { player?.volume = volume }
+    }
+
+    @Published var lyricLines: [LyricLine] = []
+    @Published var currentLyricIndex: Int = -1
+    @Published var hasLyrics: Bool = false
+
+    var onTrackPlayed: ((MusicTrack) -> Void)?
 
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var statusObserver: NSKeyValueObservation?
     private var originalQueue: [MusicTrack] = []
     private var currentIndex: Int = 0
+    private var lastBaseURL: String = ""
 
     enum RepeatMode {
         case off, all, one
@@ -102,6 +119,9 @@ final class AudioPlayer: ObservableObject {
     func playTrack(_ track: MusicTrack, from baseURL: String, queue: [MusicTrack] = []) {
         self.currentTrack = track
         self.duration = track.duration
+        if !baseURL.isEmpty {
+            self.lastBaseURL = baseURL
+        }
 
         if !queue.isEmpty {
             self.originalQueue = queue
@@ -109,8 +129,16 @@ final class AudioPlayer: ObservableObject {
             self.currentIndex = queue.firstIndex(where: { $0.id == track.id }) ?? 0
         }
 
+        let effectiveBase = baseURL.isEmpty ? lastBaseURL : baseURL
+
+        if let artPath = track.artworkURL {
+            self.albumArtURL = URL(string: "\(effectiveBase)\(artPath)")
+        } else {
+            self.albumArtURL = nil
+        }
+
         guard let streamURL = track.streamURL,
-              let url = URL(string: "\(baseURL)\(streamURL)") else {
+              let url = URL(string: "\(effectiveBase)\(streamURL)") else {
             return
         }
 
@@ -121,6 +149,7 @@ final class AudioPlayer: ObservableObject {
         let playerItem = AVPlayerItem(url: url)
         if player == nil {
             player = AVPlayer(playerItem: playerItem)
+            player?.volume = volume
         } else {
             player?.replaceCurrentItem(with: playerItem)
         }
@@ -139,6 +168,8 @@ final class AudioPlayer: ObservableObject {
 
         addTimeObserver()
         updateNowPlayingInfo()
+        fetchLyrics(baseURL: effectiveBase)
+        onTrackPlayed?(track)
 
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
         NotificationCenter.default.addObserver(
@@ -179,7 +210,7 @@ final class AudioPlayer: ObservableObject {
             return
         }
         let track = queue[currentIndex]
-        playTrack(track, from: "", queue: queue)
+        playTrack(track, from: lastBaseURL, queue: queue)
     }
 
     func previous() {
@@ -197,7 +228,7 @@ final class AudioPlayer: ObservableObject {
             return
         }
         let track = queue[currentIndex]
-        playTrack(track, from: "", queue: queue)
+        playTrack(track, from: lastBaseURL, queue: queue)
     }
 
     func seek(to time: TimeInterval) {
@@ -239,6 +270,7 @@ final class AudioPlayer: ObservableObject {
         isPlaying = false
         currentTime = 0
         duration = 0
+        albumArtURL = nil
         removeTimeObserver()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
@@ -253,10 +285,12 @@ final class AudioPlayer: ObservableObject {
     }
 
     private func addTimeObserver() {
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor in
-                self?.currentTime = time.seconds.isNaN ? 0 : time.seconds
+                let t = time.seconds.isNaN ? 0 : time.seconds
+                self?.currentTime = t
+                self?.updateLyricIndex()
             }
         }
     }
@@ -281,5 +315,60 @@ final class AudioPlayer: ObservableObject {
             info[MPMediaItemPropertyAlbumTitle] = album
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    // MARK: - Lyrics
+
+    private var lyricsTask: Task<Void, Never>?
+
+    func fetchLyrics(baseURL: String) {
+        lyricsTask?.cancel()
+        lyricLines = []
+        currentLyricIndex = -1
+        hasLyrics = false
+
+        guard let track = currentTrack else { return }
+        let effectiveBase = baseURL.isEmpty ? lastBaseURL : baseURL
+        guard let url = URL(string: "\(effectiveBase)/api/music/lyrics/\(track.id)") else { return }
+
+        lyricsTask = Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard !Task.isCancelled else { return }
+                struct LyricsResponse: Decodable {
+                    let has_lyrics: Bool
+                    let lines: [LineDef]
+                    struct LineDef: Decodable {
+                        let time: Double
+                        let text: String
+                    }
+                }
+                let resp = try JSONDecoder().decode(LyricsResponse.self, from: data)
+                self.lyricLines = resp.lines.enumerated().map { i, l in
+                    LyricLine(id: i, time: l.time, text: l.text)
+                }
+                self.hasLyrics = resp.has_lyrics
+            } catch {
+                // Silently fail — lyrics are optional
+            }
+        }
+    }
+
+    var lyricOffset: TimeInterval = 1.5
+
+    func updateLyricIndex() {
+        guard !lyricLines.isEmpty else { return }
+        let adjusted = currentTime - lyricOffset
+        var newIndex = -1
+        for i in lyricLines.indices {
+            if lyricLines[i].time <= adjusted {
+                newIndex = i
+            } else {
+                break
+            }
+        }
+        if newIndex != currentLyricIndex {
+            currentLyricIndex = newIndex
+        }
     }
 }

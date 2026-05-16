@@ -7,6 +7,8 @@ struct NowPlayingBar: View {
     @State private var isDraggingSeek = false
     @State private var seekDragValue: Double = 0
     @State private var showQueuePopover = false
+    @State private var showEQPopover = false
+    @State private var showLyricsPopover = false
 
     private let goldAccent = Color(red: 0.85, green: 0.65, blue: 0.13)
     private let barHeight: CGFloat = 64
@@ -292,6 +294,22 @@ struct NowPlayingBar: View {
             .buttonStyle(.plain)
             .help("Scroll to Now Playing")
 
+            // Lyrics button
+            Button(action: { showLyricsPopover.toggle() }) {
+                Image(systemName: "quote.bubble")
+                    .font(.system(size: 13))
+                    .foregroundColor(
+                        showLyricsPopover
+                            ? goldAccent
+                            : (viewModel.lyricManager.hasLyrics ? goldAccent.opacity(0.7) : .gray)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Lyrics")
+            .popover(isPresented: $showLyricsPopover, arrowEdge: .top) {
+                LyricsView(lyricManager: viewModel.lyricManager, viewModel: viewModel)
+            }
+
             // Queue button
             Button(action: { showQueuePopover.toggle() }) {
                 Image(systemName: "list.bullet")
@@ -301,6 +319,22 @@ struct NowPlayingBar: View {
             .buttonStyle(.plain)
             .popover(isPresented: $showQueuePopover, arrowEdge: .top) {
                 QueuePanelView(viewModel: viewModel)
+            }
+
+            // EQ button
+            Button(action: { showEQPopover.toggle() }) {
+                Image(systemName: "slider.vertical.3")
+                    .font(.system(size: 13))
+                    .foregroundColor(
+                        showEQPopover
+                            ? goldAccent
+                            : (viewModel.audioEngineManager.isEQEnabled ? goldAccent.opacity(0.7) : .gray)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Equalizer")
+            .popover(isPresented: $showEQPopover, arrowEdge: .top) {
+                EqualizerView(engineManager: viewModel.audioEngineManager)
             }
 
             // Output button

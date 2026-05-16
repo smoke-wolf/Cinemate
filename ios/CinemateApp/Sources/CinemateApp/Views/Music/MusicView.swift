@@ -3,12 +3,14 @@ import SwiftUI
 struct MusicView: View {
     @EnvironmentObject var apiClient: APIClient
     @EnvironmentObject var audioPlayer: AudioPlayer
+    let account: Account
 
     @State private var selectedTab: MusicTab = .recents
-    @State private var albums: [MusicAlbum] = MusicAlbum.previewList
-    @State private var artists: [MusicArtist] = MusicArtist.previewList
-    @State private var recentTracks: [MusicTrack] = MusicTrack.previewList
+    @State private var albums: [MusicAlbum] = []
+    @State private var artists: [MusicArtist] = []
+    @State private var recentTracks: [MusicTrack] = []
     @State private var playlists: [Playlist] = []
+    @State private var isLoading = false
 
     enum MusicTab: String, CaseIterable {
         case recents = "Recents"
@@ -51,16 +53,28 @@ struct MusicView: View {
                     }
 
                     // Content
-                    ScrollView(.vertical, showsIndicators: false) {
-                        switch selectedTab {
-                        case .recents:
-                            recentsContent
-                        case .artists:
-                            artistsContent
-                        case .albums:
-                            albumsContent
-                        case .playlists:
-                            playlistsContent
+                    if isLoading && albums.isEmpty && artists.isEmpty && recentTracks.isEmpty {
+                        musicSkeletonView
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            switch selectedTab {
+                            case .recents:
+                                recentsContent
+                            case .artists:
+                                artistsContent
+                            case .albums:
+                                albumsContent
+                            case .playlists:
+                                playlistsContent
+                            }
+                        }
+                    }
+                }
+                .onChange(of: selectedTab) { _, newTab in
+                    if newTab == .playlists {
+                        Task {
+                            let accountId = Int(account.id) ?? 0
+                            playlists = (try? await apiClient.getPlaylists(accountId: accountId)) ?? []
                         }
                     }
                 }
@@ -70,41 +84,67 @@ struct MusicView: View {
             .cinemateToolbarColorScheme(.dark)
         }
         .task {
+            let accountId = Int(account.id) ?? 0
+            audioPlayer.onTrackPlayed = { track in
+                Task {
+                    try? await apiClient.logPlay(accountId: accountId, trackId: track.id, duration: track.duration)
+                }
+            }
             await loadData()
         }
     }
 
     private var recentsContent: some View {
-        LazyVStack(spacing: 2) {
-            ForEach(recentTracks) { track in
-                TrackRow(track: track) {
-                    audioPlayer.playTrack(track, from: apiClient.baseURL, queue: recentTracks)
+        Group {
+            if !isLoading && recentTracks.isEmpty {
+                musicEmptyState
+            } else {
+                LazyVStack(spacing: 2) {
+                    ForEach(recentTracks) { track in
+                        TrackRow(track: track) {
+                            audioPlayer.playTrack(track, from: apiClient.baseURL, queue: recentTracks)
+                        }
+                    }
                 }
+                .padding(.bottom, 140)
             }
         }
-        .padding(.bottom, 140)
     }
 
     private var artistsContent: some View {
+        Group {
+            if !isLoading && artists.isEmpty {
+                musicEmptyState
+            } else {
+                artistsList
+            }
+        }
+    }
+
+    private var artistsList: some View {
         LazyVStack(spacing: 8) {
             ForEach(artists) { artist in
                 NavigationLink(destination: ArtistView(artist: artist)) {
                     HStack(spacing: 14) {
                         // Artist avatar
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Theme.cardSurface, Theme.elevatedSurface],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                        CachedAsyncImage(url: apiClient.artistImageURL(name: artist.name)) {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Theme.cardSurface, Theme.elevatedSurface],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
                                 )
-                            )
-                            .frame(width: 52, height: 52)
-                            .overlay {
-                                Image(systemName: "music.mic")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(Theme.textTertiary)
-                            }
+                                .frame(width: 52, height: 52)
+                                .overlay {
+                                    Image(systemName: "music.mic")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(Theme.textTertiary)
+                                }
+                        }
+                        .frame(width: 52, height: 52)
+                        .clipShape(Circle())
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(artist.name)
@@ -135,33 +175,39 @@ struct MusicView: View {
             GridItem(.flexible(), spacing: 14),
         ]
 
-        return LazyVGrid(columns: columns, spacing: 18) {
-            ForEach(albums) { album in
-                NavigationLink(destination: AlbumView(album: album)) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        CachedAsyncImage(url: nil) {
-                            AlbumArtPlaceholder(size: 170)
-                        }
-                        .aspectRatio(1, contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
+        return Group {
+            if !isLoading && albums.isEmpty {
+                musicEmptyState
+            } else {
+                LazyVGrid(columns: columns, spacing: 18) {
+                    ForEach(albums) { album in
+                        NavigationLink(destination: AlbumView(album: album)) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                CachedAsyncImage(url: apiClient.albumArtURL(albumId: album.id)) {
+                                    AlbumArtPlaceholder(size: 170)
+                                }
+                                .aspectRatio(1, contentMode: .fill)
+                                .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(album.title)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
-                                .lineLimit(1)
-                            Text(album.artist)
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textSecondary)
-                                .lineLimit(1)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(album.title)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(Theme.textPrimary)
+                                        .lineLimit(1)
+                                    Text(album.artist)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(Theme.textSecondary)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
+                        .buttonStyle(PressableButtonStyle())
                     }
                 }
-                .buttonStyle(PressableButtonStyle())
+                .padding(.horizontal)
+                .padding(.bottom, 140)
             }
         }
-        .padding(.horizontal)
-        .padding(.bottom, 140)
     }
 
     private var playlistsContent: some View {
@@ -182,45 +228,78 @@ struct MusicView: View {
                 .padding(.top, 60)
             } else {
                 ForEach(playlists) { playlist in
-                    HStack(spacing: 14) {
-                        AlbumArtPlaceholder(size: 52)
+                    NavigationLink(destination: PlaylistDetailView(playlist: playlist, account: account)) {
+                        HStack(spacing: 14) {
+                            AlbumArtPlaceholder(size: 52)
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(playlist.name)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Theme.textPrimary)
-                            Text(playlist.trackCountDisplay)
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textSecondary)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(playlist.name)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Theme.textPrimary)
+                                Text(playlist.trackCountDisplay)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Theme.textTertiary)
                         }
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.textTertiary)
+                        .padding(.horizontal)
                     }
-                    .padding(.horizontal)
                 }
             }
         }
         .padding(.bottom, 140)
     }
 
-    private func loadData() async {
-        do {
-            albums = try await apiClient.getAlbums()
-            artists = try await apiClient.getArtists()
-            recentTracks = try await apiClient.getRecentTracks(accountId: 0)
-            playlists = try await apiClient.getPlaylists(accountId: 0)
-        } catch {
-            // Keep preview data
+    private var musicEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "music.note")
+                .font(.system(size: 40))
+                .foregroundStyle(Theme.textTertiary)
+            Text("No music yet")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+            Text("Your music library will appear here")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.textTertiary)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
+    }
+
+    private var musicSkeletonView: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 4) {
+                ForEach(0..<8, id: \.self) { _ in
+                    ShimmerRow()
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                }
+            }
+        }
+    }
+
+    private func loadData() async {
+        isLoading = true
+        defer { isLoading = false }
+        let accountId = Int(account.id) ?? 0
+        async let a = apiClient.getAlbums()
+        async let b = apiClient.getArtists()
+        async let c = try? apiClient.getRecentTracks(accountId: accountId)
+        async let d = try? apiClient.getPlaylists(accountId: accountId)
+        do { albums = try await a } catch {}
+        do { artists = try await b } catch {}
+        recentTracks = await c ?? []
+        playlists = await d ?? []
     }
 }
 
 #Preview {
-    MusicView()
+    MusicView(account: Account.previewAccounts[0])
         .environmentObject(APIClient())
         .environmentObject(AudioPlayer())
         .preferredColorScheme(.dark)

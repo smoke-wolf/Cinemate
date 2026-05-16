@@ -19,12 +19,18 @@ struct SidebarView: View {
                 .padding(.bottom, 24)
 
             ForEach(LibraryViewModel.Tab.allCases, id: \.self) { tab in
-                SidebarButton(
-                    title: tab.rawValue,
-                    icon: icon(for: tab),
-                    isSelected: viewModel.currentTab == tab
-                ) {
-                    viewModel.currentTab = tab
+                // Hide Devices tab when no devices are connected
+                if tab == .devices && viewModel.downloadManager.connectedDevices.isEmpty {
+                    EmptyView()
+                } else {
+                    SidebarButton(
+                        title: tab.rawValue,
+                        icon: icon(for: tab),
+                        isSelected: viewModel.currentTab == tab,
+                        badge: badgeCount(for: tab)
+                    ) {
+                        viewModel.currentTab = tab
+                    }
                 }
             }
 
@@ -233,8 +239,20 @@ struct SidebarView: View {
         case .books: return "book.closed"
         case .favorites: return "heart.fill"
         case .recent: return "clock"
+        case .downloads: return "arrow.down.circle"
+        case .devices: return "laptopcomputer.and.iphone"
         case .lanAdmin: return "network"
         case .profile: return "person.circle"
+        case .settings: return "gearshape"
+        }
+    }
+
+    private func badgeCount(for tab: LibraryViewModel.Tab) -> Int {
+        switch tab {
+        case .downloads:
+            return viewModel.downloadManager.activeDownloads.count
+        default:
+            return 0
         }
     }
 }
@@ -243,6 +261,7 @@ struct SidebarButton: View {
     let title: String
     let icon: String
     let isSelected: Bool
+    var badge: Int = 0
     let action: () -> Void
 
     var body: some View {
@@ -254,6 +273,17 @@ struct SidebarButton: View {
                 Text(title)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
                 Spacer()
+                if badge > 0 {
+                    Text("\(badge)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(Color.blue)
+                        )
+                }
             }
             .foregroundColor(isSelected ? .white : .gray)
             .padding(.horizontal, 16)

@@ -42,90 +42,29 @@ struct ProfileView: View {
                                 GridItem(.flexible()),
                             ], spacing: 12) {
                                 StatCard(
-                                    title: "Movies Watched",
-                                    value: "\(stats?.moviesWatched ?? 12)",
+                                    title: "Watched",
+                                    value: "\(stats?.watchedCount ?? 0)",
                                     icon: "film.fill",
                                     color: Theme.primaryGold
                                 )
                                 StatCard(
                                     title: "Watch Time",
-                                    value: formatWatchTime(stats?.totalWatchTime ?? 43200),
+                                    value: formatWatchTime(stats?.totalWatchTimeSeconds ?? 0),
                                     icon: "clock.fill",
                                     color: Theme.warmAmber
                                 )
                                 StatCard(
-                                    title: "Avg Rating",
-                                    value: String(format: "%.1f", stats?.averageRating ?? 8.2),
-                                    icon: "star.fill",
+                                    title: "Favorites",
+                                    value: "\(stats?.favoritesCount ?? 0)",
+                                    icon: "heart.fill",
                                     color: Color(hex: "#F59E0B")
                                 )
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        // Listening Stats
-                        VStack(alignment: .leading, spacing: 14) {
-                            SectionHeader(title: "Listening Stats", icon: "music.note")
-
-                            LazyVGrid(columns: [
-                                GridItem(.flexible()),
-                                GridItem(.flexible()),
-                            ], spacing: 12) {
                                 StatCard(
-                                    title: "Tracks Played",
-                                    value: "\(stats?.tracksPlayed ?? 248)",
-                                    icon: "music.note.list",
+                                    title: "Total Plays",
+                                    value: "\(stats?.totalPlays ?? 0)",
+                                    icon: "play.circle.fill",
                                     color: Color(hex: "#A855F7")
                                 )
-                                StatCard(
-                                    title: "Listening Time",
-                                    value: formatWatchTime(stats?.listeningTime ?? 28800),
-                                    icon: "headphones",
-                                    color: Color(hex: "#EC4899")
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        // Reading Stats
-                        VStack(alignment: .leading, spacing: 14) {
-                            SectionHeader(title: "Reading Stats", icon: "book")
-
-                            LazyVGrid(columns: [
-                                GridItem(.flexible()),
-                                GridItem(.flexible()),
-                            ], spacing: 12) {
-                                StatCard(
-                                    title: "Books Read",
-                                    value: "\(stats?.booksRead ?? 5)",
-                                    icon: "book.fill",
-                                    color: Color(hex: "#14B8A6")
-                                )
-                                StatCard(
-                                    title: "Pages Read",
-                                    value: "\(stats?.pagesRead ?? 1420)",
-                                    icon: "doc.text.fill",
-                                    color: Color(hex: "#3B82F6")
-                                )
-                            }
-                        }
-                        .padding(.horizontal)
-
-                        // Favorite Genres
-                        VStack(alignment: .leading, spacing: 14) {
-                            SectionHeader(title: "Top Genres", icon: "chart.bar")
-
-                            let genres = stats?.favoriteGenres ?? ["Sci-Fi", "Drama", "Action", "Thriller", "Rock"]
-                            FlowLayout(spacing: 8) {
-                                ForEach(genres, id: \.self) { genre in
-                                    Text(genre)
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(Theme.primaryGold)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(Theme.primaryGold.opacity(0.12))
-                                        .clipShape(Capsule())
-                                }
                             }
                         }
                         .padding(.horizontal)
@@ -153,7 +92,10 @@ struct ProfileView: View {
             .cinemateToolbarBackground(Theme.background)
             .cinemateToolbarColorScheme(.dark)
             .navigationDestination(isPresented: $showSettings) {
-                SettingsView()
+                SettingsView(
+                    account: account,
+                    onSwitchAccount: { showSwitchProfile = true }
+                )
             }
         }
         .task {
@@ -165,7 +107,7 @@ struct ProfileView: View {
         do {
             stats = try await apiClient.getAccountStats(accountId: Int(account.id) ?? 0)
         } catch {
-            // Keep defaults
+            // API error — show zero stats
         }
     }
 

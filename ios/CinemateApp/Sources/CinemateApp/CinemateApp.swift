@@ -1,9 +1,21 @@
 import SwiftUI
 
+private struct AccountIdKey: EnvironmentKey {
+    static let defaultValue: Int = 0
+}
+
+extension EnvironmentValues {
+    var accountId: Int {
+        get { self[AccountIdKey.self] }
+        set { self[AccountIdKey.self] = newValue }
+    }
+}
+
 @main
 struct CinemateApp: App {
     @StateObject private var apiClient = APIClient()
     @StateObject private var audioPlayer = AudioPlayer()
+    @StateObject private var downloadManager = DownloadManager.shared
 
     @State private var appState: AppState = .splash
 
@@ -76,8 +88,10 @@ struct CinemateApp: App {
 
                 case .main(let account):
                     MainTabView(account: account)
+                        .environment(\.accountId, Int(account.id) ?? 0)
                         .environmentObject(apiClient)
                         .environmentObject(audioPlayer)
+                        .environmentObject(downloadManager)
                         .transition(.opacity)
                 }
             }

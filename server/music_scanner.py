@@ -86,7 +86,7 @@ def _extract_metadata(filepath: str) -> dict:
     result = {
         "title": Path(filepath).stem,
         "artist": "Unknown Artist",
-        "album": "Unknown Album",
+        "album": None,
         "album_artist": None,
         "track_number": None,
         "disc_number": None,
@@ -155,6 +155,13 @@ def _extract_metadata(filepath: str) -> dict:
 
     except Exception as e:
         logger.debug(f"Metadata extraction error for {filepath}: {e}")
+
+    if result["artist"] == "Unknown Artist":
+        stem = Path(filepath).stem
+        if " - " in stem:
+            parts = stem.split(" - ", 1)
+            result["artist"] = parts[0].strip()
+            result["title"] = parts[1].strip()
 
     return result
 
@@ -269,7 +276,7 @@ def extract_album_art(filepath: str, album_id: int) -> Optional[str]:
 def _album_key(meta: dict) -> str:
     """Generate a stable key for deduplicating albums."""
     artist = (meta.get("album_artist") or meta.get("artist") or "Unknown Artist").strip().lower()
-    album = (meta.get("album") or "Unknown Album").strip().lower()
+    album = (meta.get("album") or f"{meta.get('artist', 'Unknown Artist')} - Singles").strip().lower()
     return f"{artist}||{album}"
 
 
@@ -330,7 +337,7 @@ async def scan_music_directory(path: str, ws_broadcast: Optional[Callable] = Non
                     if album_id is None:
                         # Check DB
                         album_artist = meta.get("album_artist") or meta.get("artist") or "Unknown Artist"
-                        album_name = meta.get("album") or "Unknown Album"
+                        album_name = meta.get("album") or f"{album_artist} - Singles"
                         cursor = await db.execute(
                             "SELECT id FROM music_albums WHERE LOWER(name) = LOWER(?) AND LOWER(artist) = LOWER(?)",
                             (album_name, album_artist),

@@ -1,6 +1,6 @@
 import Foundation
 
-struct TVShow: Identifiable, Codable, Hashable {
+struct TVShow: Identifiable, Hashable, Codable {
     let id: String
     let title: String
     let year: Int?
@@ -8,9 +8,41 @@ struct TVShow: Identifiable, Codable, Hashable {
     let rating: Double?
     let description: String?
     let thumbnailURL: String?
-    let seasons: [Season]
+    var seasons: [Season]
     var isFavorite: Bool
     let dateAdded: Date?
+
+    var name: String { title }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, year, genre, rating, description, seasons
+        case thumbnailURL = "thumbnail_url"
+        case isFavorite = "is_favorite"
+        case dateAdded = "date_added"
+    }
+
+    init(id: String, name: String, episodes: [MediaItem], thumbnailURL: String?,
+         genre: [String], rating: Double?, year: Int?) {
+        self.id = name
+        self.title = name
+        self.year = year
+        self.genre = genre
+        self.rating = rating
+        self.description = nil
+        self.thumbnailURL = thumbnailURL
+        self.seasons = []
+        self.isFavorite = false
+        self.dateAdded = nil
+    }
+
+    init(id: String, title: String, year: Int?, genre: [String], rating: Double?,
+         description: String?, thumbnailURL: String?, seasons: [Season],
+         isFavorite: Bool, dateAdded: Date?) {
+        self.id = id; self.title = title; self.year = year; self.genre = genre
+        self.rating = rating; self.description = description
+        self.thumbnailURL = thumbnailURL; self.seasons = seasons
+        self.isFavorite = isFavorite; self.dateAdded = dateAdded
+    }
 
     var totalEpisodes: Int {
         seasons.reduce(0) { $0 + $1.episodes.count }
@@ -26,12 +58,6 @@ struct TVShow: Identifiable, Codable, Hashable {
         "\(seasons.count) Season\(seasons.count == 1 ? "" : "s")"
     }
 
-    enum CodingKeys: String, CodingKey {
-        case id, title, year, genre, rating, description, seasons
-        case thumbnailURL = "thumbnail_url"
-        case isFavorite = "is_favorite"
-        case dateAdded = "date_added"
-    }
 }
 
 struct Season: Identifiable, Codable, Hashable {

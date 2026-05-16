@@ -3,7 +3,7 @@ import LocalAuthentication
 
 struct AccountSelectorView: View {
     @EnvironmentObject var apiClient: APIClient
-    @State private var accounts: [Account] = Account.previewAccounts
+    @State private var accounts: [Account] = []
     @State private var selectedAccount: Account?
     @State private var showPINEntry = false
     @State private var showAddProfile = false
@@ -67,6 +67,13 @@ struct AccountSelectorView: View {
         .onAppear {
             withAnimation {
                 animateIn = true
+            }
+        }
+        .task {
+            do {
+                accounts = try await apiClient.getAccounts()
+            } catch {
+                // API error — accounts remain empty
             }
         }
         .sheet(isPresented: $showPINEntry) {

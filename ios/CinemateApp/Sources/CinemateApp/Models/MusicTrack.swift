@@ -84,15 +84,39 @@ struct MusicAlbum: Identifiable, Codable, Hashable {
 }
 
 struct MusicArtist: Identifiable, Codable, Hashable {
-    let id: Int
+    var id: String { name }
     let name: String
     let albumCount: Int
     let trackCount: Int
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case name = "artist"
         case albumCount = "album_count"
         case trackCount = "track_count"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // Server returns "artist" key, fallback to "name" for local init
+        if let artist = try? c.decode(String.self, forKey: .name) {
+            name = artist
+        } else {
+            // Fallback: try decoding with a plain "name" key
+            let alt = try decoder.container(keyedBy: AltCodingKeys.self)
+            name = try alt.decode(String.self, forKey: .name)
+        }
+        albumCount = try c.decodeIfPresent(Int.self, forKey: .albumCount) ?? 0
+        trackCount = try c.decodeIfPresent(Int.self, forKey: .trackCount) ?? 0
+    }
+
+    private enum AltCodingKeys: String, CodingKey {
+        case name
+    }
+
+    init(name: String, albumCount: Int, trackCount: Int) {
+        self.name = name
+        self.albumCount = albumCount
+        self.trackCount = trackCount
     }
 }
 
@@ -145,17 +169,40 @@ struct ArtistProfile: Codable {
 struct Playlist: Identifiable, Codable, Hashable {
     let id: Int
     var name: String
-    var trackIds: [Int]
+    var description: String?
+    var trackCount: Int
+    var totalDuration: Double?
     let createdAt: String?
+    let updatedAt: String?
 
     var trackCountDisplay: String {
-        "\(trackIds.count) track\(trackIds.count == 1 ? "" : "s")"
+        "\(trackCount) track\(trackCount == 1 ? "" : "s")"
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name
-        case trackIds = "track_ids"
+        case id, name, description
+        case trackCount = "track_count"
+        case totalDuration = "total_duration"
         case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        trackCount = try c.decodeIfPresent(Int.self, forKey: .trackCount) ?? 0
+        totalDuration = try c.decodeIfPresent(Double.self, forKey: .totalDuration)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = try c.decodeIfPresent(String.self, forKey: .updatedAt)
+    }
+
+    init(id: Int, name: String, description: String? = nil, trackCount: Int = 0,
+         totalDuration: Double? = nil, createdAt: String? = nil, updatedAt: String? = nil) {
+        self.id = id; self.name = name; self.description = description
+        self.trackCount = trackCount; self.totalDuration = totalDuration
+        self.createdAt = createdAt; self.updatedAt = updatedAt
     }
 }
 
@@ -191,14 +238,14 @@ extension MusicAlbum {
 
 extension MusicArtist {
     static let preview = MusicArtist(
-        id: 1, name: "Queen", albumCount: 4, trackCount: 45
+        name: "Queen", albumCount: 4, trackCount: 45
     )
 
     static let previewList: [MusicArtist] = [
         .preview,
-        MusicArtist(id: 2, name: "Led Zeppelin", albumCount: 3, trackCount: 72),
-        MusicArtist(id: 3, name: "Pink Floyd", albumCount: 5, trackCount: 68),
-        MusicArtist(id: 4, name: "Eagles", albumCount: 2, trackCount: 34),
+        MusicArtist(name: "Led Zeppelin", albumCount: 3, trackCount: 72),
+        MusicArtist(name: "Pink Floyd", albumCount: 5, trackCount: 68),
+        MusicArtist(name: "Eagles", albumCount: 2, trackCount: 34),
     ]
 }
 

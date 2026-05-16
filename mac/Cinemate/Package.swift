@@ -14,7 +14,11 @@ let package = Package(
                 .product(name: "SQLite", package: "SQLite.swift"),
             ],
             path: "Sources/Cinemate",
-            exclude: ["Resources/Info.plist"]
+            exclude: ["Resources/Info.plist"],
+            resources: [
+                .copy("Resources/Cinemate.icns"),
+                .copy("Resources/Assets.xcassets"),
+            ]
         ),
     ]
 )

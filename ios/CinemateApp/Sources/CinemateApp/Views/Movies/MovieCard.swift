@@ -10,7 +10,7 @@ struct MovieCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 // Thumbnail
                 ZStack(alignment: .bottomLeading) {
-                    CachedAsyncImage(url: nil) {
+                    CachedAsyncImage(url: URL(string: movie.thumbnailURL ?? "")) {
                         MediaPlaceholder(icon: "film")
                     }
                     .frame(width: 160, height: 90)
@@ -53,7 +53,7 @@ struct MovieCard: View {
 
                     HStack(spacing: 6) {
                         if let year = movie.year {
-                            Text("\(year)")
+                            Text(String(year))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.textSecondary)
                         }
@@ -84,7 +84,7 @@ struct WideMovieCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 14) {
-                CachedAsyncImage(url: nil) {
+                CachedAsyncImage(url: URL(string: movie.thumbnailURL ?? "")) {
                     MediaPlaceholder(icon: "film")
                 }
                 .frame(width: 120, height: 68)
@@ -104,7 +104,7 @@ struct WideMovieCard: View {
 
                     HStack(spacing: 8) {
                         if let year = movie.year {
-                            Text("\(year)")
+                            Text(String(year))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.textSecondary)
                         }

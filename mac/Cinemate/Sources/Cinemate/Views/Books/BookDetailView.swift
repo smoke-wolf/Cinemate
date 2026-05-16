@@ -117,39 +117,41 @@ struct BookDetailView: View {
 
                                 // Action buttons
                                 HStack(spacing: 10) {
+                                    Button(action: {
+                                        onRead()
+                                        dismiss()
+                                    }) {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: book.format == "PDF" ? "doc.richtext" : "book.fill")
+                                            Text(book.readingProgress > 0 && !book.finished ? "Resume" : (book.format == "PDF" ? "View PDF" : "Read"))
+                                        }
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(.black)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                        .cornerRadius(6)
+                                    }
+                                    .buttonStyle(.plain)
+
                                     if book.format == "PDF" {
                                         Button(action: {
-                                            onRead()
+                                            viewModel.openReaderAsEbook(book)
                                             dismiss()
                                         }) {
                                             HStack(spacing: 6) {
                                                 Image(systemName: "book.fill")
-                                                Text(book.readingProgress > 0 && !book.finished ? "Resume" : "Read")
+                                                Text("Read as eBook")
                                             }
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundColor(.black)
-                                            .frame(maxWidth: .infinity)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 14)
                                             .padding(.vertical, 10)
-                                            .background(Color(red: 0.95, green: 0.8, blue: 0.2))
+                                            .background(Color.white.opacity(0.12))
                                             .cornerRadius(6)
                                         }
                                         .buttonStyle(.plain)
-                                    } else {
-                                        Button(action: {
-                                            onOpenInBooks()
-                                        }) {
-                                            HStack(spacing: 6) {
-                                                Image(systemName: "arrow.up.forward.app")
-                                                Text("Open in Books.app")
-                                            }
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundColor(.black)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 10)
-                                            .background(Color(red: 0.95, green: 0.8, blue: 0.2))
-                                            .cornerRadius(6)
-                                        }
-                                        .buttonStyle(.plain)
+                                        .help("Extract text and read in reflowable eBook format")
                                     }
 
                                     Button(action: onMarkFinished) {

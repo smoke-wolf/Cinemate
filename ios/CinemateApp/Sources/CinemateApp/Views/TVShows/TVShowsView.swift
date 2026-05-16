@@ -2,7 +2,7 @@ import SwiftUI
 
 struct TVShowsView: View {
     @EnvironmentObject var apiClient: APIClient
-    @State private var shows: [TVShow] = TVShow.previewList
+    @State private var shows: [TVShow] = []
     @State private var isLoading = false
     @State private var selectedShow: TVShow?
 
@@ -16,20 +16,38 @@ struct TVShowsView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 18) {
-                        ForEach(shows) { show in
-                            TVShowCard(show: show) {
-                                selectedShow = show
+                if isLoading && shows.isEmpty {
+                    tvShowsSkeletonView
+                } else if !isLoading && shows.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "tv")
+                            .font(.system(size: 40))
+                            .foregroundStyle(Theme.textTertiary)
+                        Text("No TV shows yet")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                        Text("Your TV shows will appear here")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.bottom, 80)
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVGrid(columns: columns, spacing: 18) {
+                            ForEach(shows) { show in
+                                TVShowCard(show: show) {
+                                    selectedShow = show
+                                }
                             }
                         }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .padding(.bottom, 100)
                     }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    .padding(.bottom, 100)
-                }
-                .refreshable {
-                    await loadShows()
+                    .refreshable {
+                        await loadShows()
+                    }
                 }
             }
             .navigationTitle("TV Shows")
@@ -44,14 +62,36 @@ struct TVShowsView: View {
         }
     }
 
+    private var tvShowsSkeletonView: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVGrid(columns: columns, spacing: 18) {
+                ForEach(0..<6, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 8) {
+                        ShimmerView()
+                            .aspectRatio(16.0/9.0, contentMode: .fill)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
+
+                        ShimmerView()
+                            .frame(height: 14)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                        ShimmerView()
+                            .frame(width: 80, height: 10)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
+        }
+    }
+
     private func loadShows() async {
         isLoading = true
         defer { isLoading = false }
         do {
             shows = try await apiClient.getTVShows()
-        } catch {
-            // Keep preview data
-        }
+        } catch {}
     }
 }
 
@@ -62,15 +102,13 @@ struct TVShowCard: View {
     var body: some View {
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 8) {
-                // Thumbnail
                 ZStack(alignment: .bottomTrailing) {
-                    CachedAsyncImage(url: nil) {
+                    CachedAsyncImage(url: URL(string: show.thumbnailURL ?? "")) {
                         MediaPlaceholder(icon: "tv")
                     }
                     .aspectRatio(16.0/9.0, contentMode: .fill)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
 
-                    // Episode count badge
                     Text(show.seasonCount)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
@@ -89,7 +127,7 @@ struct TVShowCard: View {
 
                     HStack(spacing: 6) {
                         if let year = show.year {
-                            Text("\(year)")
+                            Text(String(year))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.textSecondary)
                         }
@@ -106,7 +144,6 @@ struct TVShowCard: View {
                         }
                     }
 
-                    // Watch progress
                     if show.totalEpisodes > 0 {
                         let progress = Double(show.watchedEpisodes) / Double(show.totalEpisodes)
                         if progress > 0 && progress < 1 {

@@ -2,7 +2,9 @@ import SwiftUI
 
 struct BooksView: View {
     @EnvironmentObject var apiClient: APIClient
-    @State private var books: [Book] = Book.previewList
+    let account: Account
+    @State private var books: [Book] = []
+    @State private var isLoading = false
     @State private var selectedFilter: BookFilter = .all
     @State private var selectedBook: Book?
     @State private var sortOrder: SortOrder = .recent
@@ -35,9 +37,8 @@ struct BooksView: View {
     }
 
     let columns = [
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14),
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16),
     ]
 
     var body: some View {
@@ -96,19 +97,37 @@ struct BooksView: View {
                     .padding(.vertical, 12)
 
                     // Book Grid
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVGrid(columns: columns, spacing: 20) {
-                            ForEach(filteredBooks) { book in
-                                BookCard(book: book) {
-                                    selectedBook = book
+                    if isLoading && books.isEmpty {
+                        booksSkeletonView
+                    } else if !isLoading && books.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "book.closed")
+                                .font(.system(size: 40))
+                                .foregroundStyle(Theme.textTertiary)
+                            Text("No books yet")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                            Text("Your book library will appear here")
+                                .font(.system(size: 14))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.top, 60)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            LazyVGrid(columns: columns, spacing: 24) {
+                                ForEach(filteredBooks) { book in
+                                    BookCard(book: book) {
+                                        selectedBook = book
+                                    }
                                 }
                             }
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 100)
                         }
-                        .padding(.horizontal)
-                        .padding(.bottom, 100)
-                    }
-                    .refreshable {
-                        await loadBooks()
+                        .refreshable {
+                            await loadBooks()
+                        }
                     }
                 }
             }
@@ -116,7 +135,7 @@ struct BooksView: View {
             .cinemateToolbarBackground(Theme.background)
             .cinemateToolbarColorScheme(.dark)
             .navigationDestination(item: $selectedBook) { book in
-                BookDetailView(book: book)
+                BookDetailView(book: book, account: account)
             }
         }
         .task {
@@ -124,17 +143,42 @@ struct BooksView: View {
         }
     }
 
+    private var booksSkeletonView: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVGrid(columns: columns, spacing: 24) {
+                ForEach(0..<6, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 8) {
+                        ShimmerView()
+                            .aspectRatio(2.0/3.0, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
+
+                        ShimmerView()
+                            .frame(height: 14)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                        ShimmerView()
+                            .frame(width: 80, height: 10)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
     private func loadBooks() async {
+        isLoading = true
+        defer { isLoading = false }
         do {
             books = try await apiClient.getBooks()
         } catch {
-            // Keep preview data
+            // API error — show empty state
         }
     }
 }
 
 #Preview {
-    BooksView()
+    BooksView(account: Account.previewAccounts[0])
         .environmentObject(APIClient())
         .preferredColorScheme(.dark)
 }

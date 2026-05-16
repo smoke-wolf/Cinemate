@@ -28,7 +28,7 @@ struct TVShowDetailView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     // Hero
                     ZStack(alignment: .bottom) {
-                        CachedAsyncImage(url: nil) {
+                        CachedAsyncImage(url: URL(string: show.thumbnailURL ?? "")) {
                             MediaPlaceholder(icon: "tv")
                         }
                         .frame(height: 220)
@@ -154,12 +154,14 @@ struct TVShowDetailView: View {
         .fullScreenCover(isPresented: $showPlayer) {
             if let episode = playingEpisode {
                 EpisodePlayerView(show: show, episode: episode)
+                    .environmentObject(apiClient)
             }
         }
         #else
         .sheet(isPresented: $showPlayer) {
             if let episode = playingEpisode {
                 EpisodePlayerView(show: show, episode: episode)
+                    .environmentObject(apiClient)
             }
         }
         #endif
@@ -175,7 +177,7 @@ struct EpisodeRow: View {
             HStack(spacing: 14) {
                 // Thumbnail
                 ZStack {
-                    CachedAsyncImage(url: nil) {
+                    CachedAsyncImage(url: URL(string: episode.thumbnailURL ?? "")) {
                         MediaPlaceholder(icon: "play.rectangle")
                     }
                     .frame(width: 120, height: 68)
@@ -250,6 +252,12 @@ struct EpisodePlayerView: View {
     let episode: Episode
 
     @State private var player: AVPlayer?
+    @State private var showControls = true
+    @State private var controlsTimer: Timer?
+    @State private var currentTime: TimeInterval = 0
+    @State private var totalDuration: TimeInterval = 0
+    @State private var isPlaying = false
+    @State private var isFillMode = false
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
@@ -257,12 +265,50 @@ struct EpisodePlayerView: View {
             Color.black.ignoresSafeArea()
 
             if let player = player {
+                #if os(iOS)
+                PlayerLayerView(
+                    player: player,
+                    videoGravity: isFillMode ? .resizeAspectFill : .resizeAspect
+                )
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showControls.toggle()
+                    }
+                    resetControlsTimer()
+                }
+                #else
                 VideoPlayer(player: player)
                     .ignoresSafeArea()
+                #endif
             } else {
                 ProgressView()
                     .tint(Theme.primaryGold)
+                    .scaleEffect(1.5)
             }
+
+            if showControls {
+                controlsOverlay
+                    .transition(.opacity)
+            }
+        }
+        .onAppear {
+            setupPlayer()
+            forceLandscape()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+            restorePortrait()
+        }
+        .persistentSystemOverlays(.hidden)
+    }
+
+    private var controlsOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             VStack {
                 HStack {
@@ -279,28 +325,180 @@ struct EpisodePlayerView: View {
                         }
                         .foregroundStyle(.white)
                         .padding(12)
-                        .background(.ultraThinMaterial.opacity(0.5))
+                        .background(.ultraThinMaterial.opacity(0.6))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
+
                     Spacer()
+
+                    Button(action: {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isFillMode.toggle()
+                        }
+                    }) {
+                        Image(systemName: isFillMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white)
+                            .padding(10)
+                            .background(.ultraThinMaterial.opacity(0.6))
+                            .clipShape(Circle())
+                    }
                 }
                 .padding()
+
                 Spacer()
+
+                HStack(spacing: 48) {
+                    Button(action: { seekBackward() }) {
+                        Image(systemName: "gobackward.10")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white)
+                    }
+
+                    Button(action: { togglePlayPause() }) {
+                        Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                            .font(.system(size: 56))
+                            .foregroundStyle(.white)
+                    }
+
+                    Button(action: { seekForward() }) {
+                        Image(systemName: "goforward.10")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.white)
+                    }
+                }
+
+                Spacer()
+
+                VStack(spacing: 8) {
+                    Slider(
+                        value: Binding(
+                            get: { currentTime },
+                            set: { newValue in
+                                currentTime = newValue
+                                let time = CMTime(seconds: newValue, preferredTimescale: 600)
+                                player?.seek(to: time)
+                            }
+                        ),
+                        in: 0...max(totalDuration, 1)
+                    )
+                    .tint(Theme.primaryGold)
+
+                    HStack {
+                        Text(formatTime(currentTime))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.8))
+
+                        Spacer()
+
+                        Text("-\(formatTime(totalDuration - currentTime))")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 20)
             }
         }
-        .onAppear {
-            if let streamURL = episode.streamURL,
-               let url = apiClient.streamURL(for: streamURL) {
-                let avPlayer = AVPlayer(url: url)
-                self.player = avPlayer
-                avPlayer.play()
+    }
+
+    private func setupPlayer() {
+        guard let streamURLString = episode.streamURL else { return }
+        let transcodeURL = streamURLString.contains("/api/stream/")
+            ? streamURLString + "/transcode"
+            : streamURLString
+        guard let url = URL(string: transcodeURL) else { return }
+
+        let avPlayer = AVPlayer(url: url)
+        self.player = avPlayer
+
+        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        avPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { time in
+            self.currentTime = time.seconds.isNaN ? 0 : time.seconds
+            if let item = avPlayer.currentItem {
+                let dur = item.duration.seconds
+                if !dur.isNaN {
+                    self.totalDuration = dur
+                }
             }
         }
-        .onDisappear {
+
+        avPlayer.play()
+        isPlaying = true
+        resetControlsTimer()
+    }
+
+    private func togglePlayPause() {
+        if isPlaying {
             player?.pause()
-            player = nil
+        } else {
+            player?.play()
         }
-        .persistentSystemOverlays(.hidden)
+        isPlaying.toggle()
+    }
+
+    private func seekBackward() {
+        let newTime = max(currentTime - 10, 0)
+        player?.seek(to: CMTime(seconds: newTime, preferredTimescale: 600))
+    }
+
+    private func seekForward() {
+        let newTime = min(currentTime + 10, totalDuration)
+        player?.seek(to: CMTime(seconds: newTime, preferredTimescale: 600))
+    }
+
+    private func resetControlsTimer() {
+        controlsTimer?.invalidate()
+        controlsTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                showControls = false
+            }
+        }
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let totalSeconds = Int(max(seconds, 0))
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let secs = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%d:%02d", minutes, secs)
+    }
+
+    private func forceLandscape() {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first else { return }
+            let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(
+                interfaceOrientations: .landscape
+            )
+            windowScene.requestGeometryUpdate(geometryPreferences)
+            windowScene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            UINavigationController.attemptRotationToDeviceOrientation()
+        }
+        #endif
+    }
+
+    private func restorePortrait() {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first else { return }
+            let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(
+                interfaceOrientations: .portrait
+            )
+            windowScene.requestGeometryUpdate(geometryPreferences)
+            windowScene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            UINavigationController.attemptRotationToDeviceOrientation()
+        }
+        #endif
     }
 }
 

@@ -14,7 +14,7 @@ struct AlbumView: View {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
                     // Album Art
-                    CachedAsyncImage(url: nil) {
+                    CachedAsyncImage(url: apiClient.albumArtURL(albumId: album.id)) {
                         AlbumArtPlaceholder(size: 240)
                     }
                     .frame(width: 240, height: 240)
@@ -29,16 +29,18 @@ struct AlbumView: View {
                             .foregroundStyle(Theme.textPrimary)
                             .multilineTextAlignment(.center)
 
-                        Text(album.artist)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Theme.primaryGold)
+                        NavigationLink(destination: ArtistView(artist: MusicArtist(name: album.artist, albumCount: 0, trackCount: 0))) {
+                            Text(album.artist)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Theme.primaryGold)
+                        }
 
                         HStack(spacing: 8) {
                             if let genre = album.genre {
                                 Text(genre)
                             }
                             if let year = album.year {
-                                Text("\u{2022} \(year)")
+                                Text(String(year))
                             }
                             Text("\u{2022} \(album.trackCountDisplay)")
                         }
@@ -84,7 +86,7 @@ struct AlbumView: View {
         .cinemateToolbarColorScheme(.dark)
         .task {
             do {
-                tracks = try await apiClient.getMusicTracks(album: album.name)
+                tracks = try await apiClient.getMusicTracks(albumId: album.id)
             } catch {}
         }
     }

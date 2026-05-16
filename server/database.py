@@ -12,6 +12,7 @@ THUMBNAIL_DIR = DB_DIR / "thumbnails"
 ALBUM_ART_DIR = DB_DIR / "album_art"
 ARTIST_IMG_DIR = DB_DIR / "artist_images"
 BOOK_COVER_DIR = DB_DIR / "book_covers"
+UPLOAD_DIR = DB_DIR / "uploads"
 CONFIG_PATH = DB_DIR / "config.json"
 
 DEFAULT_CONFIG = {
@@ -296,16 +297,93 @@ CREATE INDEX IF NOT EXISTS idx_book_account_data_account ON book_account_data(ac
 CREATE INDEX IF NOT EXISTS idx_book_account_data_book ON book_account_data(book_id);
 CREATE INDEX IF NOT EXISTS idx_book_bookmarks_account ON book_bookmarks(account_id);
 CREATE INDEX IF NOT EXISTS idx_book_bookmarks_book ON book_bookmarks(book_id);
+
+-- Device Registry
+CREATE TABLE IF NOT EXISTS devices (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    device_type TEXT NOT NULL,
+    platform_version TEXT,
+    app_version TEXT,
+    account_id INTEGER,
+    last_seen TEXT DEFAULT (datetime('now')),
+    is_online INTEGER DEFAULT 0,
+    capabilities TEXT DEFAULT '[]',
+    storage_available_bytes INTEGER DEFAULT 0,
+    registered_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
+);
+
+-- Content Fingerprints for dedup
+CREATE TABLE IF NOT EXISTS content_fingerprints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_type TEXT NOT NULL,
+    content_id INTEGER NOT NULL,
+    file_hash TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    duration REAL,
+    title_normalized TEXT,
+    artist_normalized TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(content_type, content_id)
+);
+
+-- Transfer/Download Jobs
+CREATE TABLE IF NOT EXISTS transfer_jobs (
+    id TEXT PRIMARY KEY,
+    job_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    source_device_id TEXT,
+    target_device_id TEXT,
+    content_type TEXT NOT NULL,
+    content_id INTEGER,
+    file_name TEXT NOT NULL,
+    file_size INTEGER NOT NULL DEFAULT 0,
+    bytes_transferred INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    priority INTEGER DEFAULT 0,
+    metadata TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    started_at TEXT,
+    completed_at TEXT,
+    FOREIGN KEY (source_device_id) REFERENCES devices(id) ON DELETE SET NULL,
+    FOREIGN KEY (target_device_id) REFERENCES devices(id) ON DELETE SET NULL
+);
+
+-- Device Library Manifest
+CREATE TABLE IF NOT EXISTS device_library (
+    device_id TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    content_id INTEGER NOT NULL,
+    fingerprint_hash TEXT,
+    local_file_size INTEGER,
+    downloaded_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (device_id, content_type, content_id),
+    FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_account ON devices(account_id);
+CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen);
+CREATE INDEX IF NOT EXISTS idx_content_fingerprints_hash ON content_fingerprints(file_hash);
+CREATE INDEX IF NOT EXISTS idx_content_fingerprints_type_id ON content_fingerprints(content_type, content_id);
+CREATE INDEX IF NOT EXISTS idx_content_fingerprints_title ON content_fingerprints(title_normalized);
+CREATE INDEX IF NOT EXISTS idx_transfer_jobs_status ON transfer_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_transfer_jobs_target ON transfer_jobs(target_device_id);
+CREATE INDEX IF NOT EXISTS idx_transfer_jobs_source ON transfer_jobs(source_device_id);
+CREATE INDEX IF NOT EXISTS idx_transfer_jobs_created ON transfer_jobs(created_at);
+CREATE INDEX IF NOT EXISTS idx_device_library_device ON device_library(device_id);
+CREATE INDEX IF NOT EXISTS idx_device_library_content ON device_library(content_type, content_id);
 """
 
 
 def ensure_dirs():
-    """Create ~/.cinemate/, thumbnails/, album_art/, and book_covers/ if they don't exist."""
+    """Create ~/.cinemate/, thumbnails/, album_art/, book_covers/, and uploads/ if they don't exist."""
     DB_DIR.mkdir(parents=True, exist_ok=True)
     THUMBNAIL_DIR.mkdir(parents=True, exist_ok=True)
     ALBUM_ART_DIR.mkdir(parents=True, exist_ok=True)
     ARTIST_IMG_DIR.mkdir(parents=True, exist_ok=True)
     BOOK_COVER_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def load_config() -> dict:

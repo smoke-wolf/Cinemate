@@ -74,6 +74,7 @@ struct BookReaderView: View {
     let book: Book
     let onClose: () -> Void
     var accountId: Int64? = nil
+    var readAsEbook: Bool = false
 
     @State private var currentPage: Int = 1
     @State private var totalPages: Int = 0
@@ -87,8 +88,13 @@ struct BookReaderView: View {
     private let goldAccent = Color(red: 0.95, green: 0.8, blue: 0.2)
 
     var body: some View {
-        if book.format == "PDF" {
+        if book.format == "PDF" && !readAsEbook {
             pdfReaderContent
+        } else if book.format == "PDF" && readAsEbook {
+            PDFAsEbookView(book: book, nightMode: $nightMode, onClose: {
+                saveProgress()
+                onClose()
+            }, accountId: accountId)
         } else {
             epubPlaceholder
         }
@@ -263,18 +269,22 @@ struct BookReaderView: View {
                     .font(.system(size: 10).monospacedDigit())
                     .foregroundColor(.gray.opacity(0.6))
 
-                Slider(
-                    value: Binding(
-                        get: { Double(currentPage) },
-                        set: { newVal in
-                            let page = max(1, min(Int(newVal), totalPages))
-                            goToPage(page)
-                        }
-                    ),
-                    in: 1...max(Double(totalPages), 1),
-                    step: 1
-                )
-                .tint(goldAccent)
+                if totalPages > 1 {
+                    Slider(
+                        value: Binding(
+                            get: { Double(currentPage) },
+                            set: { newVal in
+                                let page = max(1, min(Int(newVal), totalPages))
+                                goToPage(page)
+                            }
+                        ),
+                        in: 1...Double(totalPages),
+                        step: 1
+                    )
+                    .tint(goldAccent)
+                } else {
+                    Spacer()
+                }
 
                 Text("\(totalPages)")
                     .font(.system(size: 10).monospacedDigit())
@@ -328,49 +338,15 @@ struct BookReaderView: View {
     }
 
     private var epubPlaceholder: some View {
-        VStack(spacing: 24) {
-            Spacer()
-
-            Image(systemName: "book.closed.fill")
-                .font(.system(size: 64))
-                .foregroundColor(Color(red: 0.95, green: 0.8, blue: 0.2).opacity(0.5))
-
-            Text("EPUB Reader Coming Soon")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.white)
-
-            Text("EPUB rendering support is under development.\nIn the meantime, you can open this book in Apple Books.")
-                .font(.system(size: 14))
-                .foregroundColor(.gray)
-                .multilineTextAlignment(.center)
-
-            Button(action: {
-                NSWorkspace.shared.open(URL(fileURLWithPath: book.filePath))
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.up.forward.app")
-                    Text("Open in Books.app")
-                }
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.black)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(Color(red: 0.95, green: 0.8, blue: 0.2))
-                .cornerRadius(8)
-            }
-            .buttonStyle(.plain)
-
-            Button(action: onClose) {
-                Text("Back to Library")
-                    .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.6))
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(white: 0.08))
+        EPUBReaderView(
+            book: book,
+            nightMode: $nightMode,
+            onClose: {
+                saveProgress()
+                onClose()
+            },
+            accountId: accountId
+        )
     }
 
     private var bookmarkDialog: some View {

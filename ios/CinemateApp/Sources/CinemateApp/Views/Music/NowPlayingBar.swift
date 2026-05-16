@@ -23,7 +23,7 @@ struct NowPlayingBar: View {
 
                     HStack(spacing: 12) {
                         // Album art
-                        CachedAsyncImage(url: nil) {
+                        CachedAsyncImage(url: audioPlayer.albumArtURL) {
                             AlbumArtPlaceholder(size: 40)
                         }
                         .frame(width: 40, height: 40)

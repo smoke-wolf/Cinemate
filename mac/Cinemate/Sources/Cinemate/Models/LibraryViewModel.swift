@@ -1,7 +1,10 @@
 import SwiftUI
+import Combine
 
 @MainActor
 final class LibraryViewModel: ObservableObject {
+    private var cancellables = Set<AnyCancellable>()
+
     @Published var movies: [MediaItem] = []
     @Published var shows: [TVShow] = []
     @Published var favorites: [MediaItem] = []
@@ -37,6 +40,20 @@ final class LibraryViewModel: ObservableObject {
     // Music library
     @Published var musicViewModel = MusicViewModel()
 
+    // Download manager
+    @Published var downloadManager = MacDownloadManager()
+
+    init() {
+        bookViewModel.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        musicViewModel.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
+
     enum Tab: String, CaseIterable {
         case browse = "Browse"
         case tvShows = "TV Shows"
@@ -44,7 +61,10 @@ final class LibraryViewModel: ObservableObject {
         case books = "Books"
         case favorites = "Favorites"
         case recent = "Recently Played"
-        case lanAdmin = "LAN Admin"
+        case downloads = "Downloads"
+        case devices = "Devices"
+        case lanAdmin = "Network"
+        case settings = "Settings"
         case profile = "Profile"
     }
 

@@ -1,0 +1,40 @@
+name: CinemateApp
+options:
+  bundleIdPrefix: com.maliqbarnard
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.4"
+settings:
+  DEVELOPMENT_TEAM: D9G63XD36B
+  CODE_SIGN_STYLE: Automatic
+targets:
+  CinemateApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/CinemateApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.maliqbarnard.CinemateApp
+        INFOPLIST_GENERATION_MODE: GeneratedFile
+        MARKETING_VERSION: "3.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "Cinemate needs local network access to discover and connect to your media server."
+        INFOPLIST_KEY_NSBonjourServices: "_cinemate._tcp"
+        INFOPLIST_KEY_NSCameraUsageDescription: "Cinemate uses the camera to scan QR codes for quick server connection."
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_IDENTITY: "Apple Development"
+    info:
+      path: Sources/CinemateApp/Info.plist
+      properties:
+        NSLocalNetworkUsageDescription: "Cinemate needs local network access to discover and connect to your media server."
+        NSCameraUsageDescription: "Cinemate uses the camera to scan QR codes for quick server connection."
+        NSBonjourServices:
+          - "_cinemate._tcp"
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true

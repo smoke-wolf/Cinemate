@@ -1,11 +1,18 @@
 import SwiftUI
 
+struct SeeAllDestination: Hashable {
+    let title: String
+    let items: [MediaItem]
+}
+
 struct MoviesView: View {
     @EnvironmentObject var apiClient: APIClient
-    @State private var movies: [MediaItem] = MediaItem.previewList
+    let account: Account
+    @State private var movies: [MediaItem] = []
     @State private var isLoading = false
     @State private var selectedMovie: MediaItem?
     @State private var searchText = ""
+    @State private var seeAllDestination: SeeAllDestination?
 
     private var continueWatching: [MediaItem] {
         movies.filter { $0.watchProgress > 0 && $0.watchProgress < 1 }
@@ -34,65 +41,119 @@ struct MoviesView: View {
             ZStack {
                 Theme.background.ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 28) {
-                        // Continue Watching
-                        if !continueWatching.isEmpty {
-                            MediaCarousel(
-                                title: "Continue Watching",
-                                items: continueWatching,
-                                showProgress: true
-                            ) { movie in
-                                selectedMovie = movie
-                            }
-                        }
-
-                        // Favorites
-                        if !favorites.isEmpty {
-                            MediaCarousel(
-                                title: "My Favorites",
-                                items: favorites
-                            ) { movie in
-                                selectedMovie = movie
-                            }
-                        }
-
-                        // Recently Added
-                        MediaCarousel(
-                            title: "Recently Added",
-                            items: recentlyAdded
-                        ) { movie in
-                            selectedMovie = movie
-                        }
-
-                        // Genre Rows
-                        ForEach(Array(genres.keys.sorted()), id: \.self) { genre in
-                            if let genreMovies = genres[genre], !genreMovies.isEmpty {
+                if isLoading && movies.isEmpty {
+                    moviesSkeletonView
+                } else if !isLoading && movies.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "film.stack")
+                            .font(.system(size: 40))
+                            .foregroundStyle(Theme.textTertiary)
+                        Text("No movies yet")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                        Text("Your movie library will appear here")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.bottom, 80)
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(alignment: .leading, spacing: 28) {
+                            if !continueWatching.isEmpty {
                                 MediaCarousel(
-                                    title: genre,
-                                    items: genreMovies
+                                    title: "Continue Watching",
+                                    items: continueWatching,
+                                    showProgress: true,
+                                    onSeeAll: {
+                                        seeAllDestination = SeeAllDestination(title: "Continue Watching", items: continueWatching)
+                                    }
                                 ) { movie in
                                     selectedMovie = movie
                                 }
                             }
+
+                            if !favorites.isEmpty {
+                                MediaCarousel(
+                                    title: "My Favorites",
+                                    items: favorites,
+                                    onSeeAll: {
+                                        seeAllDestination = SeeAllDestination(title: "My Favorites", items: favorites)
+                                    }
+                                ) { movie in
+                                    selectedMovie = movie
+                                }
+                            }
+
+                            MediaCarousel(
+                                title: "Recently Added",
+                                items: recentlyAdded,
+                                onSeeAll: {
+                                    seeAllDestination = SeeAllDestination(title: "Recently Added", items: recentlyAdded)
+                                }
+                            ) { movie in
+                                selectedMovie = movie
+                            }
+
+                            ForEach(Array(genres.keys.sorted()), id: \.self) { genre in
+                                if let genreMovies = genres[genre], !genreMovies.isEmpty {
+                                    MediaCarousel(
+                                        title: genre,
+                                        items: genreMovies,
+                                        onSeeAll: {
+                                            seeAllDestination = SeeAllDestination(title: genre, items: genreMovies)
+                                        }
+                                    ) { movie in
+                                        selectedMovie = movie
+                                    }
+                                }
+                            }
                         }
+                        .padding(.top, 8)
+                        .padding(.bottom, 100)
                     }
-                    .padding(.top, 8)
-                    .padding(.bottom, 100) // Tab bar spacing
-                }
-                .refreshable {
-                    await loadMovies()
+                    .refreshable {
+                        await loadMovies()
+                    }
                 }
             }
             .navigationTitle("Movies")
             .cinemateToolbarBackground(Theme.background)
             .cinemateToolbarColorScheme(.dark)
             .navigationDestination(item: $selectedMovie) { movie in
-                MovieDetailView(movie: movie)
+                MovieDetailView(movie: movie, account: account)
+            }
+            .navigationDestination(item: $seeAllDestination) { dest in
+                SeeAllView(title: dest.title, items: dest.items, account: account)
             }
         }
         .task {
             await loadMovies()
+        }
+    }
+
+    private var moviesSkeletonView: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 28) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(alignment: .leading, spacing: 14) {
+                        ShimmerView()
+                            .frame(width: 140, height: 20)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .padding(.horizontal)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 14) {
+                                ForEach(0..<5, id: \.self) { _ in
+                                    ShimmerCard(width: 140, height: 200)
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 8)
         }
     }
 
@@ -101,9 +162,7 @@ struct MoviesView: View {
         defer { isLoading = false }
         do {
             movies = try await apiClient.getMovies()
-        } catch {
-            // Keep preview data in demo mode
-        }
+        } catch {}
     }
 }
 
@@ -111,6 +170,7 @@ struct MediaCarousel: View {
     let title: String
     let items: [MediaItem]
     var showProgress: Bool = false
+    var onSeeAll: (() -> Void)? = nil
     let onTap: (MediaItem) -> Void
 
     var body: some View {
@@ -122,7 +182,7 @@ struct MediaCarousel: View {
 
                 Spacer()
 
-                Button(action: {}) {
+                Button(action: { onSeeAll?() }) {
                     Text("See All")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.primaryGold)
@@ -145,7 +205,7 @@ struct MediaCarousel: View {
 }
 
 #Preview {
-    MoviesView()
+    MoviesView(account: Account.previewAccounts[0])
         .environmentObject(APIClient())
         .preferredColorScheme(.dark)
 }

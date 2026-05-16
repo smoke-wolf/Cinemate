@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct MainTabView: View {
     @EnvironmentObject var apiClient: APIClient
@@ -7,12 +8,14 @@ struct MainTabView: View {
 
     @State private var selectedTab: Tab = .movies
     @State private var showNowPlaying = false
+    @State private var heartbeatTimer: Timer?
 
     enum Tab: String, CaseIterable {
         case movies = "Movies"
         case tvShows = "TV Shows"
         case music = "Music"
         case books = "Books"
+        case downloads = "Downloads"
         case profile = "Profile"
 
         var icon: String {
@@ -21,6 +24,7 @@ struct MainTabView: View {
             case .tvShows: return "tv"
             case .music: return "music.note"
             case .books: return "book"
+            case .downloads: return "arrow.down.circle"
             case .profile: return "person.circle"
             }
         }
@@ -31,53 +35,77 @@ struct MainTabView: View {
             case .tvShows: return "tv.fill"
             case .music: return "music.note"
             case .books: return "book.fill"
+            case .downloads: return "arrow.down.circle.fill"
             case .profile: return "person.circle.fill"
             }
         }
     }
 
+    private var tabBarHeight: CGFloat { 70 }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             // Content
-            TabView(selection: $selectedTab) {
-                MoviesView()
-                    .tag(Tab.movies)
-
-                TVShowsView()
-                    .tag(Tab.tvShows)
-
-                MusicView()
-                    .tag(Tab.music)
-
-                BooksView()
-                    .tag(Tab.books)
-
-                ProfileView(account: account)
-                    .tag(Tab.profile)
+            Group {
+                switch selectedTab {
+                case .movies: MoviesView(account: account)
+                case .tvShows: TVShowsView()
+                case .music: MusicView(account: account)
+                case .books: BooksView(account: account)
+                case .downloads: DownloadsView()
+                case .profile: ProfileView(account: account)
+                }
             }
-            .tint(Theme.primaryGold)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Now Playing Bar (above tab bar)
-            if audioPlayer.currentTrack != nil {
-                VStack(spacing: 0) {
+            // Bottom stack: now-playing + tab bar
+            VStack(spacing: 0) {
+                if audioPlayer.currentTrack != nil {
                     NowPlayingBar {
                         showNowPlaying = true
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-
-                    // Spacer for tab bar
-                    Color.clear.frame(height: 49)
                 }
-            }
 
-            // Custom tab bar overlay
-            VStack(spacing: 0) {
-                Spacer()
                 customTabBar
             }
         }
         .sheet(isPresented: $showNowPlaying) {
-            NowPlayingView()
+            NowPlayingView(account: account)
+        }
+        .task {
+            await registerAndStartHeartbeat()
+        }
+        .onDisappear {
+            heartbeatTimer?.invalidate()
+        }
+    }
+
+    private var deviceId: String {
+        if let saved = UserDefaults.standard.string(forKey: "cinemate_device_id"), !saved.isEmpty {
+            return saved
+        }
+        let id = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        UserDefaults.standard.set(id, forKey: "cinemate_device_id")
+        return id
+    }
+
+    private func registerAndStartHeartbeat() async {
+        let name = await UIDevice.current.name
+        let accountId = Int(account.id) ?? 0
+        _ = try? await apiClient.registerDevice(
+            deviceId: deviceId,
+            name: name,
+            deviceType: "iphone",
+            accountId: accountId
+        )
+
+        await MainActor.run {
+            heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+                Task {
+                    try? await apiClient.deviceHeartbeat(deviceId: deviceId)
+                }
+            }
         }
     }
 

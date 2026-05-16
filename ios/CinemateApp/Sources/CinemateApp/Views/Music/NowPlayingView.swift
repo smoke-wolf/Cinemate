@@ -3,7 +3,10 @@ import AVKit
 
 struct NowPlayingView: View {
     @EnvironmentObject var audioPlayer: AudioPlayer
+    @EnvironmentObject var apiClient: APIClient
+    let account: Account
     @State private var showQueue = false
+    @State private var showLyrics = false
     @State private var artworkScale: CGFloat = 1.0
     @Environment(\.dismiss) var dismiss
 
@@ -31,27 +34,42 @@ struct NowPlayingView: View {
                 Spacer()
 
                 if let track = audioPlayer.currentTrack {
-                    // Album Art
-                    CachedAsyncImage(url: nil) {
-                        RoundedRectangle(cornerRadius: Theme.cornerLarge)
-                            .fill(
-                                LinearGradient(
-                                    colors: [Theme.cardSurface, Theme.elevatedSurface],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .overlay {
-                                Image(systemName: "music.note")
-                                    .font(.system(size: 60))
-                                    .foregroundStyle(Theme.textTertiary)
+                    // Album Art / Lyrics toggle
+                    ZStack {
+                        if showLyrics && audioPlayer.hasLyrics {
+                            NowPlayingLyricsPanel(audioPlayer: audioPlayer) {
+                                audioPlayer.seek(to: $0)
                             }
+                        } else {
+                            CachedAsyncImage(url: audioPlayer.albumArtURL) {
+                                RoundedRectangle(cornerRadius: Theme.cornerLarge)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Theme.cardSurface, Theme.elevatedSurface],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .overlay {
+                                        Image(systemName: "music.note")
+                                            .font(.system(size: 60))
+                                            .foregroundStyle(Theme.textTertiary)
+                                    }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerLarge))
+                            .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 15)
+                            .scaleEffect(audioPlayer.isPlaying ? 1.0 : 0.88)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7), value: audioPlayer.isPlaying)
+                        }
                     }
                     .frame(width: 300, height: 300)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.cornerLarge))
-                    .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 15)
-                    .scaleEffect(audioPlayer.isPlaying ? 1.0 : 0.88)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.7), value: audioPlayer.isPlaying)
+                    .onTapGesture {
+                        if audioPlayer.hasLyrics {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showLyrics.toggle()
+                            }
+                        }
+                    }
                     .padding(.bottom, 32)
 
                     // Track Info
@@ -160,8 +178,14 @@ struct NowPlayingView: View {
                             .font(.system(size: 12))
                             .foregroundStyle(Theme.textTertiary)
 
-                        Slider(value: .constant(0.7), in: 0...1)
-                            .tint(Theme.textSecondary)
+                        Slider(
+                            value: Binding(
+                                get: { audioPlayer.volume },
+                                set: { audioPlayer.volume = $0 }
+                            ),
+                            in: 0...1
+                        )
+                        .tint(Theme.textSecondary)
 
                         Image(systemName: "speaker.wave.3.fill")
                             .font(.system(size: 12))
@@ -175,10 +199,32 @@ struct NowPlayingView: View {
                         // Favorite
                         Button(action: {
                             hapticImpact(.light)
+                            Task {
+                                try? await apiClient.toggleMusicFavorite(accountId: Int(account.id) ?? 0, trackId: track.id)
+                                audioPlayer.currentTrack?.isFavorite.toggle()
+                            }
                         }) {
                             Image(systemName: track.isFavorite ? "heart.fill" : "heart")
                                 .font(.system(size: 20))
                                 .foregroundStyle(track.isFavorite ? Theme.primaryGold : Theme.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        // Lyrics
+                        Button(action: {
+                            if audioPlayer.hasLyrics {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    showLyrics.toggle()
+                                }
+                            }
+                        }) {
+                            Image(systemName: "quote.bubble")
+                                .font(.system(size: 20))
+                                .foregroundStyle(
+                                    showLyrics ? Theme.primaryGold :
+                                    audioPlayer.hasLyrics ? Theme.textSecondary :
+                                    Theme.textTertiary.opacity(0.4)
+                                )
                         }
                         .frame(maxWidth: .infinity)
 
@@ -267,7 +313,58 @@ struct QueueView: View {
     }
 }
 
+// MARK: - Lyrics Panel (inline in Now Playing)
+
+struct NowPlayingLyricsPanel: View {
+    @ObservedObject var audioPlayer: AudioPlayer
+    var onSeek: (TimeInterval) -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 2) {
+                    Spacer().frame(height: 100)
+
+                    ForEach(audioPlayer.lyricLines) { line in
+                        let isActive = line.id == audioPlayer.currentLyricIndex
+                        let isPast = line.id < audioPlayer.currentLyricIndex
+
+                        Text(line.text)
+                            .font(.system(size: isActive ? 17 : 14, weight: isActive ? .bold : .medium))
+                            .foregroundStyle(
+                                isActive ? Color.white :
+                                isPast ? Color.white.opacity(0.2) :
+                                Color.white.opacity(0.4)
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 4)
+                            .id(line.id)
+                            .onTapGesture {
+                                onSeek(line.time)
+                            }
+                    }
+
+                    Spacer().frame(height: 120)
+                }
+            }
+            .onChange(of: audioPlayer.currentLyricIndex) { _, newIndex in
+                guard newIndex >= 0 else { return }
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    proxy.scrollTo(newIndex, anchor: .center)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.black.opacity(0.6))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
 #Preview {
-    NowPlayingView()
+    NowPlayingView(account: Account.previewAccounts[0])
         .environmentObject(AudioPlayer())
+        .environmentObject(APIClient())
 }

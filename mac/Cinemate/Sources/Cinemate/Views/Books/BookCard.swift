@@ -75,11 +75,9 @@ struct BookCard: View {
                             VStack(spacing: 10) {
                                 Button(action: onRead) {
                                     HStack(spacing: 6) {
-                                        Image(systemName: book.format == "PDF" ? "book.fill" : "arrow.up.forward.app")
+                                        Image(systemName: "book.fill")
                                             .font(.system(size: 14))
-                                        Text(book.format == "PDF"
-                                             ? (book.readingProgress > 0 && !book.finished ? "Resume" : "Read")
-                                             : "Open in Books")
+                                        Text(book.readingProgress > 0 && !book.finished ? "Resume" : "Read")
                                             .font(.system(size: 13, weight: .semibold))
                                     }
                                     .foregroundColor(.black)

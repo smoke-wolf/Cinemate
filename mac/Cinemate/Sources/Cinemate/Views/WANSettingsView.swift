@@ -83,8 +83,10 @@ struct WANSettingsView: View {
     @State private var ngrokReservedDomain = ""
 
     // cloudflared fields
+    @State private var cloudflaredUseFreeTunnel = true
     @State private var cloudflaredTunnelName = ""
     @State private var cloudflaredCredentialsPath = ""
+    @State private var tunnelProcess: Process?
 
     // Custom Domain fields
     @State private var customDomainURL = ""
@@ -129,6 +131,12 @@ struct WANSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 headerSection
+
+                // Security warning when WAN is enabled without a password
+                if wanEnabled && !adminPasswordSet {
+                    wanSecurityWarning
+                }
+
                 tunnelManagementCard
                 adminAuthenticationCard
                 securitySettingsCard
@@ -139,6 +147,37 @@ struct WANSettingsView: View {
         .background(Color(white: 0.1))
         .onAppear { startUptimeTimer() }
         .onDisappear { uptimeTimer?.invalidate() }
+    }
+
+    // MARK: - Security Warning Banner
+
+    private var wanSecurityWarning: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 18))
+                .foregroundColor(.orange)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Admin password not set")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.orange)
+                Text("WAN access is enabled but no admin password has been configured. Anyone with the tunnel URL can access your server. Set a password below to secure remote access.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.orange.opacity(0.8))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.orange.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                )
+        )
     }
 
     // MARK: - Header
@@ -169,11 +208,48 @@ struct WANSettingsView: View {
                 Text("WAN Settings")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.white)
-                Text("Internet access, tunnels, and remote security")
-                    .font(.system(size: 13))
-                    .foregroundColor(.gray)
+                HStack(spacing: 6) {
+                    Text("Internet access, tunnels, and remote security")
+                        .font(.system(size: 13))
+                        .foregroundColor(.gray)
+                }
             }
             Spacer()
+
+            // Quick status indicators
+            if wanEnabled {
+                HStack(spacing: 12) {
+                    if adminPasswordSet {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.shield.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.green)
+                            Text("Secured")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.green)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+
+                    if enableRateLimiting {
+                        HStack(spacing: 4) {
+                            Image(systemName: "gauge.with.dots.needle.33percent")
+                                .font(.system(size: 10))
+                                .foregroundColor(accentGold)
+                            Text("Rate Limited")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(accentGold)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(accentGold.opacity(0.1))
+                        .cornerRadius(8)
+                    }
+                }
+            }
         }
     }
 
@@ -296,30 +372,38 @@ struct WANSettingsView: View {
 
     private var cloudflaredFields: some View {
         VStack(alignment: .leading, spacing: 12) {
-            fieldRow(label: "Tunnel Name", placeholder: "cinemate-tunnel", text: $cloudflaredTunnelName)
+            toggleRow(
+                title: "Free Quick Tunnel",
+                subtitle: "No account or credentials needed — Cloudflare assigns a random .trycloudflare.com URL",
+                isOn: $cloudflaredUseFreeTunnel
+            )
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Credentials File")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.gray)
-                HStack(spacing: 8) {
-                    TextField("~/.cloudflared/credentials.json", text: $cloudflaredCredentialsPath)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.white)
-                        .padding(8)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(8)
+            if !cloudflaredUseFreeTunnel {
+                fieldRow(label: "Tunnel Name", placeholder: "cinemate-tunnel", text: $cloudflaredTunnelName)
 
-                    Button(action: { pickFile(for: .cloudflaredCredentials) }) {
-                        Image(systemName: "folder")
-                            .font(.system(size: 13))
-                            .foregroundColor(accentGold)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Credentials File")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.gray)
+                    HStack(spacing: 8) {
+                        TextField("~/.cloudflared/credentials.json", text: $cloudflaredCredentialsPath)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(.white)
                             .padding(8)
                             .background(Color.white.opacity(0.06))
                             .cornerRadius(8)
+
+                        Button(action: { pickFile(for: .cloudflaredCredentials) }) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 13))
+                                .foregroundColor(accentGold)
+                                .padding(8)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -808,41 +892,74 @@ struct WANSettingsView: View {
 
     private var domainConfigurationCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Domain Configuration")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
+            HStack {
+                Text("Domain Configuration")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                Spacer()
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(sslStatusColor)
+                        .frame(width: 7, height: 7)
+                    Text(sslStatusText)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(sslStatusColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(sslStatusColor.opacity(0.1))
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(sslStatusColor.opacity(0.2), lineWidth: 1)
+                )
+            }
 
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
                     fieldRow(label: "Custom Domain", placeholder: "cinema.example.com", text: $customDomainURL)
 
-                    // SSL/TLS status
-                    HStack(spacing: 8) {
-                        Text("SSL/TLS")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.gray)
-                        Spacer()
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(sslStatusColor)
-                                .frame(width: 7, height: 7)
-                            Text(sslStatusText)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(sslStatusColor)
+                    // DNS hint when using tunnel providers
+                    if tunnelStatus == .connected && !publicURL.isEmpty && !customDomainURL.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("DNS Configuration")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.gray)
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(accentGold.opacity(0.6))
+                                Text("Point a CNAME record for")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.5))
+                                Text(customDomainURL)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.white.opacity(0.8))
+                                Text("to your tunnel URL")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(sslStatusColor.opacity(0.1))
-                        .cornerRadius(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(sslStatusColor.opacity(0.2), lineWidth: 1)
-                        )
+                        .padding(10)
+                        .background(Color.white.opacity(0.03))
+                        .cornerRadius(8)
                     }
 
-                    // Test Connection button
-                    HStack {
+                    // Test Connection button + result
+                    HStack(spacing: 12) {
+                        if let result = testConnectionResult {
+                            HStack(spacing: 6) {
+                                Image(systemName: result.contains("Success") ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(result.contains("Success") ? .green : .red)
+                                Text(result)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(result.contains("Success") ? .green : .red)
+                            }
+                        }
+
                         Spacer()
+
                         Button(action: { testConnection() }) {
                             HStack(spacing: 6) {
                                 if testingConnection {
@@ -868,17 +985,6 @@ struct WANSettingsView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(testingConnection || publicURL.isEmpty)
-                    }
-
-                    if let result = testConnectionResult {
-                        HStack(spacing: 6) {
-                            Image(systemName: result.contains("Success") ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(result.contains("Success") ? .green : .red)
-                            Text(result)
-                                .font(.system(size: 11))
-                                .foregroundColor(result.contains("Success") ? .green : .red)
-                        }
                     }
                 }
                 .padding(14)
@@ -988,7 +1094,13 @@ struct WANSettingsView: View {
 
     private func startTunnel() {
         tunnelStatus = .connecting
-        // Simulated — real implementation would spawn the tunnel process
+
+        if tunnelType == .cloudflared {
+            startCloudflaredTunnel()
+            return
+        }
+
+        // Other tunnel types (simulated for now)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             tunnelStatus = .connected
             tunnelStartTime = Date()
@@ -997,16 +1109,110 @@ struct WANSettingsView: View {
                 publicURL = ngrokReservedDomain.isEmpty
                     ? "https://abc123.ngrok-free.app"
                     : "https://\(ngrokReservedDomain)"
-            case .cloudflared:
-                publicURL = "https://\(cloudflaredTunnelName).trycloudflare.com"
             case .customDomain:
                 publicURL = customDomainURL.hasPrefix("http") ? customDomainURL : "https://\(customDomainURL)"
+            default:
+                break
             }
             dataTransferred = "0 B"
         }
     }
 
+    private func startCloudflaredTunnel() {
+        let port: String = {
+            if let urlStr = viewModel.serverURL, let url = URL(string: urlStr), let p = url.port {
+                return "\(p)"
+            }
+            return "9876"
+        }()
+        let process = Process()
+        let pipe = Pipe()
+
+        // Find cloudflared binary
+        let possiblePaths = [
+            "/opt/homebrew/bin/cloudflared",
+            "/usr/local/bin/cloudflared",
+            "/usr/bin/cloudflared",
+        ]
+        guard let cfPath = possiblePaths.first(where: { FileManager.default.fileExists(atPath: $0) }) else {
+            tunnelStatus = .disconnected
+            publicURL = ""
+            return
+        }
+
+        process.executableURL = URL(fileURLWithPath: cfPath)
+
+        if cloudflaredUseFreeTunnel {
+            process.arguments = ["tunnel", "--url", "http://localhost:\(port)"]
+        } else {
+            var args = ["tunnel"]
+            if !cloudflaredCredentialsPath.isEmpty {
+                args += ["--credentials-file", cloudflaredCredentialsPath]
+            }
+            args += ["run"]
+            if !cloudflaredTunnelName.isEmpty {
+                args.append(cloudflaredTunnelName)
+            }
+            process.arguments = args
+        }
+
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        tunnelProcess = process
+
+        // Read output to find the assigned URL
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try process.run()
+            } catch {
+                DispatchQueue.main.async {
+                    self.tunnelStatus = .disconnected
+                }
+                return
+            }
+
+            let handle = pipe.fileHandleForReading
+            var accumulated = ""
+
+            handle.readabilityHandler = { fh in
+                let data = fh.availableData
+                guard !data.isEmpty else {
+                    handle.readabilityHandler = nil
+                    return
+                }
+                if let str = String(data: data, encoding: .utf8) {
+                    accumulated += str
+                    // cloudflared prints the URL like: https://xxx-yyy-zzz.trycloudflare.com
+                    for line in str.components(separatedBy: .newlines) {
+                        if let range = line.range(of: "https://[a-zA-Z0-9-]+\\.trycloudflare\\.com", options: .regularExpression) {
+                            let url = String(line[range])
+                            DispatchQueue.main.async {
+                                self.publicURL = url
+                                self.tunnelStatus = .connected
+                                self.tunnelStartTime = Date()
+                                self.dataTransferred = "0 B"
+                            }
+                            return
+                        }
+                    }
+                }
+            }
+        }
+
+        // Timeout — if we don't get a URL within 30s, mark as failed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+            if self.tunnelStatus == .connecting {
+                self.stopTunnel()
+            }
+        }
+    }
+
     private func stopTunnel() {
+        if let proc = tunnelProcess, proc.isRunning {
+            proc.terminate()
+        }
+        tunnelProcess = nil
         tunnelStatus = .disconnected
         publicURL = ""
         tunnelStartTime = nil

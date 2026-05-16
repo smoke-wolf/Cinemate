@@ -16,7 +16,8 @@ struct ContentView: View {
                 BookReaderView(
                     book: readingBook,
                     onClose: { viewModel.bookViewModel.closeReader() },
-                    accountId: viewModel.currentAccountId
+                    accountId: viewModel.currentAccountId,
+                    readAsEbook: viewModel.bookViewModel.readAsEbook
                 )
             } else {
                 mainView
@@ -49,6 +50,7 @@ struct ContentView: View {
                     viewModel.scan(directory: defaultPath)
                 }
             }
+            detectRunningServer()
         }
         .preferredColorScheme(.dark)
     }
@@ -112,10 +114,16 @@ struct ContentView: View {
                         onPlay: { viewModel.play($0) },
                         onFavorite: { viewModel.toggleFavorite($0) }
                     )
+                case .downloads:
+                    DownloadQueueView(downloadManager: viewModel.downloadManager)
+                case .devices:
+                    DevicesView(downloadManager: viewModel.downloadManager, serverURL: viewModel.serverURL)
                 case .lanAdmin:
                     LANAdminView(viewModel: viewModel)
                 case .profile:
                     ProfileView(viewModel: viewModel, onSwitchProfile: onSwitchProfile)
+                case .settings:
+                    SettingsView(viewModel: viewModel)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -187,6 +195,21 @@ struct ContentView: View {
                 onPlay: { viewModel.play($0) },
                 onFavorite: { viewModel.toggleFavorite($0) }
             )
+        }
+    }
+
+    private func detectRunningServer() {
+        for port in ["9876", "8000"] {
+            guard let url = URL(string: "http://localhost:\(port)/api/server/info") else { continue }
+            URLSession.shared.dataTask(with: url) { _, response, _ in
+                if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                    DispatchQueue.main.async {
+                        let addr = "http://localhost:\(port)"
+                        viewModel.serverURL = addr
+                        viewModel.musicViewModel.serverURL = addr
+                    }
+                }
+            }.resume()
         }
     }
 }

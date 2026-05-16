@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -301,6 +302,249 @@ async def read_book(book_id: int, request: Request):
                 "Content-Length": str(file_size),
             },
         )
+
+
+@router.get("/read/{book_id}/epub")
+async def read_epub_html(book_id: int, chapter: int = 0):
+    """Convert EPUB to HTML for web/iOS rendering. Returns full HTML page."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT file_path, format, title FROM books WHERE id = ?", (book_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Book not found")
+    finally:
+        await db.close()
+
+    if row["format"] != "EPUB":
+        raise HTTPException(400, "Not an EPUB file")
+
+    file_path = row["file_path"]
+    if not os.path.exists(file_path):
+        raise HTTPException(404, "File not found on disk")
+
+    try:
+        import ebooklib
+        from ebooklib import epub
+
+        book = epub.read_epub(file_path)
+
+        html_items = []
+        for item in book.get_items():
+            if item.get_type() == ebooklib.ITEM_DOCUMENT:
+                html_items.append(item)
+
+        if chapter < 0 or chapter >= len(html_items):
+            chapter = 0
+
+        content = html_items[chapter].get_content().decode("utf-8", errors="replace")
+
+        # Inline CSS from the EPUB
+        css_content = ""
+        for item in book.get_items():
+            if item.get_type() == ebooklib.ITEM_STYLE:
+                css_content += item.get_content().decode("utf-8", errors="replace") + "\n"
+
+        import base64 as b64mod
+        image_map = {}
+        for item in book.get_items():
+            if item.get_type() == ebooklib.ITEM_IMAGE:
+                data = item.get_content()
+                mime = item.media_type or "image/jpeg"
+                encoded = b64mod.b64encode(data).decode("ascii")
+                image_map[item.get_name()] = f"data:{mime};base64,{encoded}"
+
+        # Replace image src references with base64 data URIs
+        import html as html_mod
+        for orig_name, data_uri in image_map.items():
+            basename = Path(orig_name).name
+            content = content.replace(f'src="{orig_name}"', f'src="{data_uri}"')
+            content = content.replace(f'src="{basename}"', f'src="{data_uri}"')
+            content = content.replace(f"src='../{orig_name}'", f'src="{data_uri}"')
+            for prefix in ["../", "./", "images/", "Images/", "OEBPS/", "OPS/"]:
+                content = content.replace(f'src="{prefix}{basename}"', f'src="{data_uri}"')
+
+        full_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  body {{
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.7;
+    padding: 16px 20px 60px 20px;
+    max-width: 100%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }}
+  body.dark {{
+    background: #1C1C1E;
+    color: #E5E5E7;
+  }}
+  body.light {{
+    background: #FAFAFA;
+    color: #1C1C1E;
+  }}
+  img {{ max-width: 100%; height: auto; }}
+  h1, h2, h3 {{ line-height: 1.3; }}
+  a {{ color: #D4A843; }}
+  {css_content}
+</style>
+</head>
+<body class="dark">
+{content}
+</body>
+</html>"""
+
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(
+            content=full_html,
+            headers={
+                "X-Total-Chapters": str(len(html_items)),
+                "X-Current-Chapter": str(chapter),
+                "X-Book-Title": row["title"] or "",
+            },
+        )
+
+    except ImportError:
+        raise HTTPException(500, "ebooklib not installed on server")
+    except Exception as e:
+        logger.error(f"EPUB rendering failed for {book_id}: {e}")
+        raise HTTPException(500, f"Failed to render EPUB: {str(e)}")
+
+
+FRONT_MATTER_PATTERNS = re.compile(
+    r"^(cover|title[ _-]?page|half[ _-]?title|copyright|dedication|"
+    r"acknowledgment|about|frontmatter|front[ _-]?matter|"
+    r"colophon|blurb|endorsement|also[ _-]by|titlepage|nav|toc|"
+    r"table[ _-]of[ _-]contents?)$",
+    re.IGNORECASE,
+)
+
+CONTENT_START_PATTERNS = re.compile(
+    r"^(chapter|prologue|preface|foreword|introduction|part|book|"
+    r"ch[\s._-]?\d|i{1,3}\.?\s|1[\s.])",
+    re.IGNORECASE,
+)
+
+
+def _extract_chapter_title_from_html(html_bytes: bytes) -> Optional[str]:
+    """Try to pull a heading from the HTML content."""
+    text = html_bytes.decode("utf-8", errors="replace")
+    for tag in ["h1", "h2", "h3"]:
+        m = re.search(rf"<{tag}[^>]*>(.*?)</{tag}>", text, re.IGNORECASE | re.DOTALL)
+        if m:
+            title = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+            if title and len(title) < 120:
+                return title
+    return None
+
+
+def _build_smart_toc(book, doc_items) -> list[dict]:
+    """Build a TOC with real titles and smart first-chapter detection."""
+    href_to_idx: dict[str, int] = {}
+    for i, item in enumerate(doc_items):
+        href_to_idx[item.get_name()] = i
+        href_to_idx[Path(item.get_name()).name] = i
+
+    chapters: list[dict] = []
+
+    # Try the EPUB's own TOC first (re-read with NCX)
+    toc = book.toc
+    if toc:
+        def _walk_toc(entries):
+            for entry in entries:
+                if isinstance(entry, tuple):
+                    section, subs = entry
+                    href = getattr(section, "href", "").split("#")[0]
+                    idx = href_to_idx.get(href, href_to_idx.get(Path(href).name, -1))
+                    if idx >= 0:
+                        chapters.append({"index": idx, "title": section.title or ""})
+                    _walk_toc(subs)
+                else:
+                    href = getattr(entry, "href", "").split("#")[0]
+                    idx = href_to_idx.get(href, href_to_idx.get(Path(href).name, -1))
+                    if idx >= 0:
+                        chapters.append({"index": idx, "title": entry.title or ""})
+        _walk_toc(toc)
+
+    # If TOC worked, clean up titles and detect content start
+    if chapters:
+        for ch in chapters:
+            if not ch["title"]:
+                item = doc_items[ch["index"]] if ch["index"] < len(doc_items) else None
+                if item:
+                    ch["title"] = _extract_chapter_title_from_html(item.get_content()) or f"Chapter {ch['index'] + 1}"
+    else:
+        # No TOC — build from document items, extract headings
+        for i, item in enumerate(doc_items):
+            title = _extract_chapter_title_from_html(item.get_content())
+            if not title:
+                name = Path(item.get_name()).stem
+                title = re.sub(r"[_-]", " ", name).strip().title()
+            chapters.append({"index": i, "title": title})
+
+    # Mark front matter vs content
+    first_content_idx = 0
+    for i, ch in enumerate(chapters):
+        title_lower = ch["title"].lower().strip()
+        fname = doc_items[ch["index"]].get_name().lower() if ch["index"] < len(doc_items) else ""
+        fname_stem = Path(fname).stem.lower()
+
+        is_front = FRONT_MATTER_PATTERNS.match(title_lower) or FRONT_MATTER_PATTERNS.match(fname_stem)
+        is_content = CONTENT_START_PATTERNS.match(title_lower)
+
+        ch["is_front_matter"] = bool(is_front) and not is_content
+        if is_content and first_content_idx == 0:
+            first_content_idx = i
+
+    # If no content patterns matched, first non-front-matter chapter is content start
+    if first_content_idx == 0:
+        for i, ch in enumerate(chapters):
+            if not ch.get("is_front_matter"):
+                first_content_idx = i
+                break
+
+    return chapters, first_content_idx
+
+
+@router.get("/read/{book_id}/toc")
+async def epub_toc(book_id: int):
+    """Get table of contents for an EPUB with smart chapter detection."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT file_path, format FROM books WHERE id = ?", (book_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Book not found")
+    finally:
+        await db.close()
+
+    if row["format"] != "EPUB":
+        raise HTTPException(400, "Not an EPUB")
+
+    try:
+        import ebooklib
+        from ebooklib import epub
+
+        book = epub.read_epub(row["file_path"])
+        doc_items = [item for item in book.get_items() if item.get_type() == ebooklib.ITEM_DOCUMENT]
+        chapters, first_content = _build_smart_toc(book, doc_items)
+
+        return {
+            "book_id": book_id,
+            "chapters": chapters,
+            "total": len(chapters),
+            "first_content_index": first_content,
+        }
+    except Exception as e:
+        logger.error(f"TOC extraction failed for book {book_id}: {e}")
+        raise HTTPException(500, str(e))
 
 
 @router.get("/{book_id}")

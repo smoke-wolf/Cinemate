@@ -37,6 +37,8 @@ from scanner import scan_directory, scan_state, parse_filename
 from wan_routes import router as wan_router
 from music_routes import router as music_router
 from book_routes import router as book_router
+from sync_routes import router as sync_router
+from transcode import router as transcode_router
 from middleware import WANSecurityMiddleware
 
 # ---------------------------------------------------------------------------
@@ -281,6 +283,12 @@ app.include_router(music_router)
 # Book library routes (e-books, PDFs, reading progress, bookmarks)
 app.include_router(book_router)
 
+# Sync, download, upload, and device management routes
+app.include_router(sync_router)
+
+# Video transcoding routes (iOS compatibility, codec conversion, cache)
+app.include_router(transcode_router)
+
 
 # ---------------------------------------------------------------------------
 # Helper: hash a pin
@@ -385,12 +393,67 @@ async def get_genres():
     try:
         cursor = await db.execute(
             "SELECT genre, COUNT(*) as count FROM media WHERE genre IS NOT NULL "
-            "AND genre != '' GROUP BY genre ORDER BY count DESC"
+            "AND genre != '' AND media_type = 'movie' GROUP BY genre ORDER BY count DESC"
         )
         rows = await cursor.fetchall()
         return {"genres": [row_to_dict(r) for r in rows]}
     finally:
         await db.close()
+
+
+@app.post("/api/library/enrich-genres")
+async def enrich_movie_genres():
+    """Look up genres for movies missing them using OMDb API."""
+    import aiohttp
+    import re
+
+    OMDB_URL = "http://www.omdbapi.com/"
+    OMDB_KEY = "trilogy"
+
+    db = await get_db()
+    updated = 0
+    checked = 0
+    try:
+        cursor = await db.execute(
+            "SELECT id, title, year FROM media WHERE media_type = 'movie' "
+            "AND (genre IS NULL OR genre = '')"
+        )
+        movies = await cursor.fetchall()
+        checked = len(movies)
+
+        async with aiohttp.ClientSession() as session:
+            for row in movies:
+                mid, title, year = row["id"], row["title"], row["year"]
+                clean = re.sub(r'\s*[-_(]\s*(RBG|Blackjesus|iFT|MAXSPEED|BOKUTOX|HANDJOB|JYK|aXXo|anoXmous|VoStFr|AAC\d*[\s.]?\d*|720p?|1080p?|BluRay|BRRip|HDRip|WEBRip|DvDrip|XviD|x264|x265|HEVC|DTS|YIFY|RARBG|T\d+).*$', '', title, flags=re.IGNORECASE).strip()
+                clean = re.sub(r'\s+XviD.*$', '', clean, flags=re.IGNORECASE)
+                clean = re.sub(r'\s+AAC\d.*$', '', clean, flags=re.IGNORECASE)
+                clean = re.sub(r'\s+www\s.*$', '', clean, flags=re.IGNORECASE)
+                clean = re.sub(r'\s+\d{3,4}$', '', clean)
+                clean = re.sub(r'([a-z])([A-Z])', r'\1 \2', clean)
+
+                params = {"apikey": OMDB_KEY, "t": clean, "type": "movie"}
+                if year:
+                    params["y"] = year
+
+                try:
+                    async with session.get(OMDB_URL, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                        if resp.status != 200:
+                            continue
+                        data = await resp.json()
+
+                    if data.get("Response") == "True" and data.get("Genre") and data["Genre"] != "N/A":
+                        await db.execute("UPDATE media SET genre = ? WHERE id = ?", (data["Genre"], mid))
+                        updated += 1
+
+                    await asyncio.sleep(0.15)
+                except Exception:
+                    continue
+
+        await db.commit()
+    finally:
+        await db.close()
+
+    return {"updated": updated, "total_checked": checked}
 
 
 @app.get("/api/library/stats")
@@ -1015,19 +1078,127 @@ async def websocket_endpoint(websocket: WebSocket):
                 finally:
                     await db.close()
 
+            elif msg_type == "device_register":
+                # Real-time device registration notification
+                device_id = data.get("device_id")
+                device_name = data.get("name", "Unknown")
+                if device_id:
+                    db = await get_db()
+                    try:
+                        now = datetime.utcnow().isoformat()
+                        await db.execute(
+                            "UPDATE devices SET is_online = 1, last_seen = ? WHERE id = ?",
+                            (now, device_id),
+                        )
+                        await db.commit()
+                    finally:
+                        await db.close()
+                    await ws_manager.broadcast({
+                        "type": "device_online",
+                        "device_id": device_id,
+                        "device_name": device_name,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    })
+
+            elif msg_type == "device_heartbeat":
+                # Device heartbeat via WS
+                device_id = data.get("device_id")
+                if device_id:
+                    db = await get_db()
+                    try:
+                        now = datetime.utcnow().isoformat()
+                        await db.execute(
+                            "UPDATE devices SET last_seen = ?, is_online = 1 WHERE id = ?",
+                            (now, device_id),
+                        )
+                        await db.commit()
+                    finally:
+                        await db.close()
+                    await websocket.send_json({"type": "heartbeat_ack", "device_id": device_id})
+
+            elif msg_type == "transfer_progress":
+                # Device reports transfer progress
+                job_id = data.get("job_id")
+                bytes_transferred = data.get("bytes_transferred", 0)
+                status = data.get("status")
+                if job_id:
+                    db = await get_db()
+                    try:
+                        updates = ["bytes_transferred = ?"]
+                        params = [bytes_transferred]
+                        if status:
+                            updates.append("status = ?")
+                            params.append(status)
+                        params.append(job_id)
+                        await db.execute(
+                            f"UPDATE transfer_jobs SET {', '.join(updates)} WHERE id = ?",
+                            params,
+                        )
+                        await db.commit()
+
+                        # Fetch job details for broadcast
+                        cursor = await db.execute(
+                            "SELECT * FROM transfer_jobs WHERE id = ?", (job_id,)
+                        )
+                        job_row = await cursor.fetchone()
+                    finally:
+                        await db.close()
+
+                    if job_row:
+                        job_data = dict(job_row)
+                        progress_pct = 0.0
+                        if job_data["file_size"] and job_data["file_size"] > 0:
+                            progress_pct = round(
+                                (bytes_transferred / job_data["file_size"]) * 100, 1
+                            )
+
+                        # Broadcast progress to all connected clients
+                        await ws_manager.broadcast({
+                            "type": "transfer_progress",
+                            "job_id": job_id,
+                            "bytes_transferred": bytes_transferred,
+                            "file_size": job_data["file_size"],
+                            "progress_pct": progress_pct,
+                            "status": job_data["status"],
+                        })
+
+                        # If completed, broadcast completion + library update
+                        if status == "completed":
+                            await ws_manager.broadcast({
+                                "type": "transfer_completed",
+                                "job_id": job_id,
+                                "content_type": job_data["content_type"],
+                                "content_id": job_data["content_id"],
+                                "target_device_id": job_data["target_device_id"],
+                            })
+                            await ws_manager.broadcast({
+                                "type": "library_updated",
+                                "device_id": job_data["target_device_id"],
+                                "content_type": job_data["content_type"],
+                                "content_id": job_data["content_id"],
+                                "action": "downloaded",
+                            })
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
         logger.debug(f"WS error for {client_id}: {e}")
     finally:
         ws_manager.disconnect(client_id)
-        # Remove session
+        # Remove session and broadcast device_offline for any linked device
         db = await get_db()
         try:
             await db.execute("DELETE FROM sessions WHERE id = ?", (client_id,))
             await db.commit()
         finally:
             await db.close()
+
+        # Broadcast device_offline if this client had registered a device
+        await ws_manager.broadcast({
+            "type": "device_offline",
+            "client_id": client_id,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
 
 
 # ===========================================================================

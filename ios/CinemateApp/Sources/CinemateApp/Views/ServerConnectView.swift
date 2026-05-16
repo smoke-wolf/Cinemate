@@ -10,6 +10,7 @@ struct ServerConnectView: View {
     @State private var rememberServer = true
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var showQRScanner = false
 
     let onConnected: () -> Void
 
@@ -78,6 +79,19 @@ struct ServerConnectView: View {
                                 }
                             }
                         }
+                    }
+                    .padding(.horizontal)
+
+                    // QR Code Scanner
+                    VStack(spacing: 12) {
+                        GoldButton(
+                            title: "Scan QR Code",
+                            icon: "qrcode.viewfinder",
+                            action: {
+                                showQRScanner = true
+                            },
+                            isFullWidth: true
+                        )
                     }
                     .padding(.horizontal)
 
@@ -201,6 +215,12 @@ struct ServerConnectView: View {
         }
         .onDisappear {
             discovery.stopDiscovery()
+        }
+        .fullScreenCover(isPresented: $showQRScanner) {
+            QRScannerView { scannedURL in
+                manualURL = scannedURL
+                connectToServer(url: scannedURL)
+            }
         }
     }
 

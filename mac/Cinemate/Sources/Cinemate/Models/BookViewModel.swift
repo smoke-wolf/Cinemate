@@ -241,8 +241,22 @@ final class BookViewModel: ObservableObject {
         loadBooks()
     }
 
+    @Published var readAsEbook = false
+
     func openReader(_ book: Book) {
-        readingBook = book
+        selectedBook = nil
+        readAsEbook = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.readingBook = book
+        }
+    }
+
+    func openReaderAsEbook(_ book: Book) {
+        selectedBook = nil
+        readAsEbook = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.readingBook = book
+        }
     }
 
     func closeReader() {

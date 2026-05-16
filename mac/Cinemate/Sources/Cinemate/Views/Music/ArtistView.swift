@@ -5,6 +5,9 @@ struct ArtistView: View {
     @ObservedObject var viewModel: MusicViewModel
 
     @State private var showAllTracks = false
+    @State private var profile: ArtistProfile?
+    @State private var profileImage: NSImage?
+    @State private var bioExpanded = false
 
     private let goldAccent = Color(red: 0.85, green: 0.65, blue: 0.13)
 
@@ -15,31 +18,29 @@ struct ArtistView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // Artist header
                 headerSection
-
-                // Stats bar
+                if let profile {
+                    genreTagsSection(profile)
+                    if let bio = profile.bio, !bio.isEmpty {
+                        bioSection(bio)
+                    }
+                }
                 statsSection
-
                 Divider()
                     .background(Color.gray.opacity(0.2))
                     .padding(.horizontal, 24)
-
-                // Discography (albums sorted by year)
                 discographySection
-
-                // All Tracks expandable
                 allTracksSection
             }
         }
         .background(Color(white: 0.1))
+        .task { await loadProfile() }
     }
 
     // MARK: - Header
 
     private var headerSection: some View {
         HStack(spacing: 20) {
-            // Artist avatar
             ZStack {
                 Circle()
                     .fill(
@@ -51,8 +52,14 @@ struct ArtistView: View {
                     )
                     .frame(width: 120, height: 120)
 
-                if let artPath = artist.albums.first?.artPath,
-                   let image = NSImage(contentsOfFile: artPath) {
+                if let profileImage {
+                    Image(nsImage: profileImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 120, height: 120)
+                        .clipShape(Circle())
+                } else if let artPath = artist.albums.first?.artPath,
+                          let image = NSImage(contentsOfFile: artPath) {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -76,6 +83,12 @@ struct ArtistView: View {
                     .font(.system(size: 36, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
+
+                if let followers = profile?.formattedFollowers {
+                    Text(followers)
+                        .font(.system(size: 13))
+                        .foregroundColor(.gray)
+                }
 
                 HStack(spacing: 16) {
                     Button(action: { playAllTracks() }) {
@@ -113,6 +126,57 @@ struct ArtistView: View {
             Spacer()
         }
         .padding(24)
+    }
+
+    // MARK: - Genre Tags
+
+    private func genreTagsSection(_ profile: ArtistProfile) -> some View {
+        Group {
+            if !profile.genres.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(profile.genres, id: \.self) { genre in
+                            Text(genre)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(goldAccent)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(goldAccent.opacity(0.12))
+                                .cornerRadius(14)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+                .padding(.bottom, 16)
+            }
+        }
+    }
+
+    // MARK: - Bio
+
+    private func bioSection(_ bio: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("About")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+
+            Text(bio)
+                .font(.system(size: 13))
+                .foregroundColor(.gray)
+                .lineLimit(bioExpanded ? nil : 4)
+                .animation(.easeInOut, value: bioExpanded)
+
+            if bio.count > 200 {
+                Button(action: { bioExpanded.toggle() }) {
+                    Text(bioExpanded ? "Show Less" : "Read More")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(goldAccent)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
     }
 
     // MARK: - Stats
@@ -239,6 +303,46 @@ struct ArtistView: View {
                 .padding(.bottom, 24)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
+        }
+    }
+
+    // MARK: - Data Loading
+
+    private func loadProfile() async {
+        // 1. Check local cache first
+        if let cached = Database.shared.cachedArtistProfile(name: artist.name) {
+            self.profile = cached.profile
+            if let imgPath = cached.imagePath, let image = NSImage(contentsOfFile: imgPath) {
+                self.profileImage = image
+            }
+            return // Cache hit and fresh — done
+        }
+
+        // 2. No cache or stale — fetch from server
+        guard let serverURL = viewModel.serverURL else { return }
+        let encoded = artist.name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? artist.name
+        guard let url = URL(string: "\(serverURL)/api/music/artists/\(encoded)/profile") else { return }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let decoded = try JSONDecoder().decode(ArtistProfile.self, from: data)
+            await MainActor.run { self.profile = decoded }
+
+            // Download and cache artist image
+            var localImagePath: String?
+            if let imageURLStr = decoded.imageURL {
+                if let path = await Database.downloadAndCacheArtistImage(from: imageURLStr, artistName: artist.name) {
+                    localImagePath = path
+                    if let image = NSImage(contentsOfFile: path) {
+                        await MainActor.run { self.profileImage = image }
+                    }
+                }
+            }
+
+            // Save to cache
+            Database.shared.cacheArtistProfile(decoded, imagePath: localImagePath)
+        } catch {
+            print("[ArtistView] Failed to load profile for \(artist.name): \(error)")
         }
     }
 

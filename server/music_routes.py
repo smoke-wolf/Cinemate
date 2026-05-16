@@ -494,27 +494,152 @@ async def classify_genres():
 
 @router.get("/api/music/artists/{name}/image")
 async def get_artist_image(name: str):
-    """Serve cached artist image from disk."""
+    """Serve artist image from disk, downloading from remote URL if needed.
+
+    Priority:
+    1. Cached artist image on disk (music_artists.image_path).
+    2. Remote artist image URL (music_artists.image_url) — downloaded and cached on first request.
+    3. Album art from music_albums.art_path for any album by this artist.
+    4. Album art file on disk at ALBUM_ART_DIR/{album_id}.jpg (handles DB art_path being NULL).
+    Returns 404 if no image source is available.
+    """
+    import urllib.parse
+
+    decoded_name = urllib.parse.unquote(name)
+
     db = await get_db()
     try:
+        # 1. Try dedicated artist image already on disk
         cursor = await db.execute(
-            "SELECT image_path FROM music_artists WHERE name = ?", (name,)
+            "SELECT image_path, image_url FROM music_artists WHERE name = ?", (decoded_name,)
         )
         row = await cursor.fetchone()
-        if not row or not row["image_path"]:
-            raise HTTPException(404, "Artist image not found")
+        if row and row["image_path"]:
+            image_path = Path(row["image_path"])
+            if not image_path.is_absolute():
+                image_path = ARTIST_IMG_DIR / image_path
+            if image_path.is_file():
+                return FileResponse(str(image_path), media_type="image/jpeg")
 
-        image_path = Path(row["image_path"])
-        # Support both absolute paths and paths relative to ARTIST_IMG_DIR
-        if not image_path.is_absolute():
-            image_path = ARTIST_IMG_DIR / image_path
+        # 2. Try downloading from remote image_url (Spotify CDN etc.)
+        if row and row["image_url"]:
+            downloaded_path = await _download_artist_image(
+                decoded_name, row["image_url"], db
+            )
+            if downloaded_path and downloaded_path.is_file():
+                return FileResponse(str(downloaded_path), media_type="image/jpeg")
 
-        if not image_path.is_file():
-            raise HTTPException(404, "Artist image file missing")
+        # 3. Fall back to album art from any album by this artist (DB art_path)
+        cursor = await db.execute(
+            """SELECT id, art_path FROM music_albums
+               WHERE (artist = ? OR album_artist = ?)
+               ORDER BY
+                   CASE WHEN art_path IS NOT NULL AND art_path != '' THEN 0 ELSE 1 END,
+                   year DESC, name
+               LIMIT 1""",
+            (decoded_name, decoded_name),
+        )
+        album_row = await cursor.fetchone()
+        if album_row:
+            # 3a. Use art_path from DB if available
+            if album_row["art_path"]:
+                art_path = Path(album_row["art_path"])
+                if art_path.is_file():
+                    return FileResponse(str(art_path), media_type="image/jpeg")
+            # 3b. Check ALBUM_ART_DIR/{album_id}.jpg directly (art_path may be NULL
+            #     even though the file exists on disk)
+            fallback_art = ALBUM_ART_DIR / f"{album_row['id']}.jpg"
+            if fallback_art.is_file():
+                return FileResponse(str(fallback_art), media_type="image/jpeg")
 
-        return FileResponse(str(image_path))
+        # 4. Check ALL albums by this artist for art files on disk
+        cursor = await db.execute(
+            """SELECT id FROM music_albums
+               WHERE (artist = ? OR album_artist = ?)
+               ORDER BY year DESC, name""",
+            (decoded_name, decoded_name),
+        )
+        all_albums = await cursor.fetchall()
+        for album in all_albums:
+            fallback_art = ALBUM_ART_DIR / f"{album['id']}.jpg"
+            if fallback_art.is_file():
+                return FileResponse(str(fallback_art), media_type="image/jpeg")
+
+        raise HTTPException(404, "Artist image not found")
     finally:
         await db.close()
+
+
+async def _download_artist_image(
+    artist_name: str, image_url: str, db
+) -> Optional[Path]:
+    """Download an artist image from a remote URL and cache it locally.
+
+    Saves to ARTIST_IMG_DIR/{sanitized_name}.jpg and updates music_artists.image_path.
+    Returns the Path on success, or None on failure.
+    """
+    import aiohttp
+    import re
+
+    try:
+        ARTIST_IMG_DIR.mkdir(parents=True, exist_ok=True)
+        # Sanitize artist name for filename
+        safe_name = re.sub(r'[^\w\s-]', '', artist_name).strip().replace(' ', '_')
+        if not safe_name:
+            safe_name = "artist"
+        out_path = ARTIST_IMG_DIR / f"{safe_name}.jpg"
+
+        # Don't re-download if file already exists
+        if out_path.is_file():
+            # Update DB so next request hits the fast path
+            await db.execute(
+                "UPDATE music_artists SET image_path = ? WHERE name = ?",
+                (str(out_path), artist_name),
+            )
+            await db.commit()
+            return out_path
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                image_url,
+                timeout=aiohttp.ClientTimeout(total=15),
+                headers={"User-Agent": "CinemateApp/1.0"},
+            ) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        "Failed to download artist image for '%s': HTTP %d",
+                        artist_name, resp.status,
+                    )
+                    return None
+                data = await resp.read()
+
+        if len(data) < 100:
+            logger.warning("Artist image too small for '%s' (%d bytes)", artist_name, len(data))
+            return None
+
+        # Try to convert to JPEG via PIL, fall back to raw bytes
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(data))
+            img = img.convert("RGB")
+            img.save(str(out_path), "JPEG", quality=85)
+        except ImportError:
+            with open(out_path, "wb") as f:
+                f.write(data)
+
+        # Update DB with local path
+        await db.execute(
+            "UPDATE music_artists SET image_path = ? WHERE name = ?",
+            (str(out_path), artist_name),
+        )
+        await db.commit()
+        logger.info("Downloaded artist image for '%s' -> %s", artist_name, out_path)
+        return out_path
+
+    except Exception as e:
+        logger.warning("Error downloading artist image for '%s': %s", artist_name, e)
+        return None
 
 
 @router.get("/api/music/albums")
@@ -762,6 +887,45 @@ async def stream_audio(track_id: int, request: Request):
         )
 
 
+LRC_DIR = os.path.expanduser("~/lyric-matcher/output")
+
+
+@router.get("/api/music/lyrics/{track_id}")
+async def get_lyrics(track_id: int):
+    """Return parsed LRC lyrics for a track."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT artist, title FROM music_tracks WHERE id = ?", (track_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Track not found")
+    finally:
+        await db.close()
+
+    safe_name = f"{row['artist']} - {row['title']}".replace("/", "-")
+    lrc_path = os.path.join(LRC_DIR, f"{safe_name}.lrc")
+
+    if not os.path.exists(lrc_path):
+        return {"has_lyrics": False, "lines": []}
+
+    lines = []
+    import re
+    pattern = re.compile(r"\[(\d{2}):(\d{2})\.(\d{2})\](.*)")
+    with open(lrc_path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            m = pattern.match(raw_line.strip())
+            if not m:
+                continue
+            time_s = int(m.group(1)) * 60 + int(m.group(2)) + int(m.group(3)) / 100.0
+            text = m.group(4).strip()
+            if text:
+                lines.append({"time": round(time_s, 2), "text": text})
+
+    return {"has_lyrics": len(lines) > 0, "lines": lines}
+
+
 @router.get("/api/music/art/{album_id}")
 async def serve_album_art(album_id: int):
     """Serve album artwork."""
@@ -881,6 +1045,46 @@ async def list_playlists(account_id: int):
         )
         rows = await cursor.fetchall()
         return {"playlists": [row_to_dict(r) for r in rows]}
+    finally:
+        await db.close()
+
+
+@router.get("/api/accounts/{account_id}/playlists/{playlist_id}")
+async def get_playlist(account_id: int, playlist_id: int):
+    """Get a playlist with its tracks."""
+    db = await get_db()
+    try:
+        await _ensure_account(db, account_id)
+        cursor = await db.execute(
+            """SELECT p.*,
+                      (SELECT COUNT(*) FROM playlist_tracks pt WHERE pt.playlist_id = p.id) as track_count,
+                      (SELECT COALESCE(SUM(t.duration), 0) FROM playlist_tracks pt
+                       JOIN music_tracks t ON t.id = pt.track_id
+                       WHERE pt.playlist_id = p.id) as total_duration
+               FROM playlists p
+               WHERE p.id = ? AND p.account_id = ?""",
+            (playlist_id, account_id),
+        )
+        playlist = await cursor.fetchone()
+        if not playlist:
+            raise HTTPException(404, "Playlist not found")
+
+        cursor = await db.execute(
+            """SELECT t.*, pt.position,
+                      mad.favorite as is_favorite,
+                      COALESCE(mad.play_count, 0) as play_count
+               FROM playlist_tracks pt
+               JOIN music_tracks t ON t.id = pt.track_id
+               LEFT JOIN music_account_data mad ON mad.track_id = t.id AND mad.account_id = ?
+               WHERE pt.playlist_id = ?
+               ORDER BY pt.position""",
+            (account_id, playlist_id),
+        )
+        tracks = await cursor.fetchall()
+
+        result = row_to_dict(playlist)
+        result["tracks"] = [row_to_dict(t) for t in tracks]
+        return result
     finally:
         await db.close()
 

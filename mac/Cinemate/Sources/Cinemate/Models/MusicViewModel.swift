@@ -79,7 +79,8 @@ final class MusicViewModel: ObservableObject {
 
     // Playback
     @Published var nowPlaying = NowPlayingState()
-    private var audioPlayer: AVAudioPlayer?
+    let audioEngineManager = AudioEngineManager()
+    let lyricManager = LyricManager()
     private var progressTimer: Timer?
 
     // Directory watcher
@@ -594,6 +595,9 @@ final class MusicViewModel: ObservableObject {
             self.isScanning = false
             self.isLoading = false
             self.scanProgress = ""
+
+            // Pre-fetch artist profiles in the background
+            self.prefetchArtistProfiles()
         }
     }
 
@@ -822,9 +826,57 @@ final class MusicViewModel: ObservableObject {
         nextTrackId += 1
     }
 
+    // MARK: - Artist Profile Pre-fetch
+
+    private var prefetchTask: Task<Void, Never>?
+
+    /// Pre-fetches artist profiles for all known artists in the background.
+    /// Skips artists that already have a fresh cache entry. Fetches one at a time
+    /// with a small delay between each to avoid hammering the server.
+    func prefetchArtistProfiles() {
+        prefetchTask?.cancel()
+        guard let serverURL = serverURL else { return }
+        let artistNames = artists.map(\.name)
+
+        prefetchTask = Task.detached(priority: .utility) {
+            for name in artistNames {
+                guard !Task.isCancelled else { return }
+
+                // Skip if already cached and fresh
+                if Database.shared.cachedArtistProfile(name: name) != nil {
+                    continue
+                }
+
+                let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+                guard let url = URL(string: "\(serverURL)/api/music/artists/\(encoded)/profile") else { continue }
+
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    let decoded = try JSONDecoder().decode(ArtistProfile.self, from: data)
+
+                    // Download and cache the image
+                    var localImagePath: String?
+                    if let imageURLStr = decoded.imageURL {
+                        localImagePath = await Database.downloadAndCacheArtistImage(
+                            from: imageURLStr, artistName: name
+                        )
+                    }
+
+                    Database.shared.cacheArtistProfile(decoded, imagePath: localImagePath)
+                } catch {
+                    // Silently skip failures during pre-fetch
+                }
+
+                // Small delay between requests (1.5s) to be polite to the server
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+    }
+
     deinit {
         directoryWatchTimer?.invalidate()
         progressTimer?.invalidate()
+        prefetchTask?.cancel()
         tearDownRemoteCommands()
     }
 
@@ -834,9 +886,21 @@ final class MusicViewModel: ObservableObject {
         stopProgressTimer()
         let url = URL(fileURLWithPath: track.filePath)
         do {
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.volume = Float(nowPlaying.volume)
-            audioPlayer?.play()
+            // Set up track-finished callback before playing
+            audioEngineManager.onTrackFinished = { [weak self] in
+                Task { @MainActor in
+                    guard let self = self else { return }
+                    if self.nowPlaying.repeatMode == .one {
+                        if let track = self.nowPlaying.currentTrack {
+                            self.play(track: track)
+                        }
+                    } else {
+                        self.next()
+                    }
+                }
+            }
+
+            try audioEngineManager.loadAndPlay(url: url, volume: Float(nowPlaying.volume))
 
             // Update play stats
             if let index = tracks.firstIndex(where: { $0.id == track.id }) {
@@ -849,6 +913,7 @@ final class MusicViewModel: ObservableObject {
 
             nowPlaying.isPlaying = true
             nowPlaying.progress = 0
+            lyricManager.loadLyrics(artist: track.artist, title: track.title)
             updateNowPlayingInfo()
             saveMusicStats()
             startProgressTimer()
@@ -873,13 +938,13 @@ final class MusicViewModel: ObservableObject {
     }
 
     func togglePlayPause() {
-        guard audioPlayer != nil else { return }
+        guard nowPlaying.currentTrack != nil else { return }
         if nowPlaying.isPlaying {
-            audioPlayer?.pause()
+            audioEngineManager.pause()
             nowPlaying.isPlaying = false
             stopProgressTimer()
         } else {
-            audioPlayer?.play()
+            audioEngineManager.resume()
             nowPlaying.isPlaying = true
             startProgressTimer()
         }
@@ -921,14 +986,14 @@ final class MusicViewModel: ObservableObject {
     }
 
     func seek(to time: Double) {
-        audioPlayer?.currentTime = time
+        audioEngineManager.seek(to: time)
         nowPlaying.progress = time
         updateNowPlayingInfo()
     }
 
     func setVolume(_ volume: Double) {
         nowPlaying.volume = volume
-        audioPlayer?.volume = Float(volume)
+        audioEngineManager.setVolume(Float(volume))
     }
 
     func volumeUp() {
@@ -1046,27 +1111,17 @@ final class MusicViewModel: ObservableObject {
 
     private func startProgressTimer() {
         nowPlayingUpdateCounter = 0
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self, let player = self.audioPlayer else { return }
-                self.nowPlaying.progress = player.currentTime
+                guard let self = self else { return }
+                let time = self.audioEngineManager.getCurrentTime()
+                self.nowPlaying.progress = time
+                self.lyricManager.update(currentTime: time)
 
-                // Update Now Playing info every 5 seconds (every 10th tick) to avoid excessive updates
                 self.nowPlayingUpdateCounter += 1
-                if self.nowPlayingUpdateCounter >= 10 {
+                if self.nowPlayingUpdateCounter >= 20 {
                     self.nowPlayingUpdateCounter = 0
                     self.updateNowPlayingInfo()
-                }
-
-                if !player.isPlaying && self.nowPlaying.isPlaying {
-                    // Track ended
-                    if self.nowPlaying.repeatMode == .one {
-                        if let track = self.nowPlaying.currentTrack {
-                            self.play(track: track)
-                        }
-                    } else {
-                        self.next()
-                    }
                 }
             }
         }

@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-cd "$(dirname "$0")/Cinemate"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/Cinemate"
 
 echo "Building Cinemate..."
 swift build -c debug 2>&1
@@ -17,7 +18,8 @@ mkdir -p "$MACOS" "$RESOURCES"
 cp .build/debug/Cinemate "$MACOS/Cinemate"
 
 # Copy app icon
-ICON_SRC="$(dirname "$0")/icon/Cinemate.icns"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ICON_SRC="$SCRIPT_DIR/icon/Cinemate.icns"
 if [ -f "$ICON_SRC" ]; then
     cp "$ICON_SRC" "$RESOURCES/Cinemate.icns"
 fi
@@ -51,6 +53,12 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <string>Cinemate</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Cinemate uses your local network to discover and connect to media servers.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_cinemate._tcp</string>
+    </array>
 </dict>
 </plist>
 PLIST

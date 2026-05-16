@@ -4,6 +4,7 @@ import AVKit
 struct MoviePlayerView: View {
     @EnvironmentObject var apiClient: APIClient
     let movie: MediaItem
+    let account: Account
 
     @State private var player: AVPlayer?
     @State private var showControls = true
@@ -11,6 +12,7 @@ struct MoviePlayerView: View {
     @State private var currentTime: TimeInterval = 0
     @State private var totalDuration: TimeInterval = 0
     @State private var isPlaying = false
+    @State private var isFillMode = false
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
@@ -19,14 +21,22 @@ struct MoviePlayerView: View {
 
             // Video Player
             if let player = player {
+                #if os(iOS)
+                PlayerLayerView(
+                    player: player,
+                    videoGravity: isFillMode ? .resizeAspectFill : .resizeAspect
+                )
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        showControls.toggle()
+                    }
+                    resetControlsTimer()
+                }
+                #else
                 VideoPlayer(player: player)
                     .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            showControls.toggle()
-                        }
-                        resetControlsTimer()
-                    }
+                #endif
             } else {
                 ProgressView()
                     .tint(Theme.primaryGold)
@@ -41,11 +51,13 @@ struct MoviePlayerView: View {
         }
         .onAppear {
             setupPlayer()
+            forceLandscape()
         }
         .onDisappear {
             saveProgress()
             player?.pause()
             player = nil
+            restorePortrait()
         }
         .persistentSystemOverlays(.hidden)
     }
@@ -76,14 +88,30 @@ struct MoviePlayerView: View {
 
                     Spacer()
 
-                    // PiP button
-                    Button(action: {}) {
-                        Image(systemName: "pip.enter")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.white)
-                            .padding(10)
-                            .background(.ultraThinMaterial.opacity(0.6))
-                            .clipShape(Circle())
+                    HStack(spacing: 10) {
+                        // Aspect ratio toggle
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isFillMode.toggle()
+                            }
+                        }) {
+                            Image(systemName: isFillMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 16))
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .background(.ultraThinMaterial.opacity(0.6))
+                                .clipShape(Circle())
+                        }
+
+                        // PiP button
+                        Button(action: {}) {
+                            Image(systemName: "pip.enter")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .background(.ultraThinMaterial.opacity(0.6))
+                                .clipShape(Circle())
+                        }
                     }
                 }
                 .padding()
@@ -148,10 +176,12 @@ struct MoviePlayerView: View {
     }
 
     private func setupPlayer() {
-        guard let streamURL = movie.streamURL,
-              let url = apiClient.streamURL(for: streamURL) else {
-            return
-        }
+        guard let streamURLString = movie.streamURL else { return }
+        let transcodeURL = streamURLString.replacingOccurrences(
+            of: "/api/stream/\(movie.id)",
+            with: "/api/stream/\(movie.id)/transcode"
+        )
+        guard let url = URL(string: transcodeURL.contains("/transcode") ? transcodeURL : streamURLString) else { return }
 
         let avPlayer = AVPlayer(url: url)
         self.player = avPlayer
@@ -202,9 +232,13 @@ struct MoviePlayerView: View {
 
     private func saveProgress() {
         guard totalDuration > 0 else { return }
-        let progress = currentTime / totalDuration
         Task {
-            try? await apiClient.updateWatchProgress(movieId: movie.id, progress: progress)
+            try? await apiClient.updateWatchProgress(
+                accountId: Int(account.id) ?? 0,
+                movieId: movie.id,
+                position: currentTime,
+                duration: totalDuration
+            )
         }
     }
 
@@ -215,6 +249,40 @@ struct MoviePlayerView: View {
                 showControls = false
             }
         }
+    }
+
+    private func forceLandscape() {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first else { return }
+            let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(
+                interfaceOrientations: .landscape
+            )
+            windowScene.requestGeometryUpdate(geometryPreferences)
+            windowScene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            UINavigationController.attemptRotationToDeviceOrientation()
+        }
+        #endif
+    }
+
+    private func restorePortrait() {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first else { return }
+            let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(
+                interfaceOrientations: .portrait
+            )
+            windowScene.requestGeometryUpdate(geometryPreferences)
+            windowScene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            UINavigationController.attemptRotationToDeviceOrientation()
+        }
+        #endif
     }
 
     private func formatTime(_ seconds: TimeInterval) -> String {
@@ -230,6 +298,6 @@ struct MoviePlayerView: View {
 }
 
 #Preview {
-    MoviePlayerView(movie: .preview)
+    MoviePlayerView(movie: .preview, account: Account.previewAccounts[0])
         .environmentObject(APIClient())
 }

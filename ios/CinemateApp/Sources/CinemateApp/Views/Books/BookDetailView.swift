@@ -3,13 +3,16 @@ import SwiftUI
 struct BookDetailView: View {
     @EnvironmentObject var apiClient: APIClient
     let book: Book
+    let account: Account
 
     @State private var isFavorite: Bool
     @State private var showReader = false
     @State private var descriptionExpanded = false
+    @State private var downloadStarted = false
 
-    init(book: Book) {
+    init(book: Book, account: Account) {
         self.book = book
+        self.account = account
         _isFavorite = State(initialValue: book.favorite)
     }
 
@@ -22,7 +25,7 @@ struct BookDetailView: View {
                     // Cover + Info Header
                     HStack(alignment: .top, spacing: 20) {
                         // Cover
-                        CachedAsyncImage(url: nil) {
+                        CachedAsyncImage(url: apiClient.bookCoverURL(bookId: book.id)) {
                             BookCoverPlaceholder()
                         }
                         .frame(width: 140, height: 210)
@@ -98,6 +101,12 @@ struct BookDetailView: View {
                         Button(action: {
                             isFavorite.toggle()
                             hapticImpact(.medium)
+                            Task {
+                                try? await apiClient.toggleBookFavorite(
+                                    accountId: Int(account.id) ?? 0,
+                                    bookId: book.id
+                                )
+                            }
                         }) {
                             VStack(spacing: 4) {
                                 Image(systemName: isFavorite ? "heart.fill" : "heart")
@@ -109,6 +118,19 @@ struct BookDetailView: View {
                             }
                             .frame(width: 60)
                         }
+
+                        Button(action: downloadBook) {
+                            VStack(spacing: 4) {
+                                Image(systemName: isBookDownloaded ? "checkmark.circle.fill" : "arrow.down.circle")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(isBookDownloaded ? Theme.success : Theme.textSecondary)
+                                Text(isBookDownloaded ? "Saved" : "Download")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textSecondary)
+                            }
+                            .frame(width: 60)
+                        }
+                        .disabled(isBookDownloaded)
                     }
                     .padding(.horizontal)
 
@@ -144,13 +166,30 @@ struct BookDetailView: View {
         .cinemateToolbarColorScheme(.dark)
         #if os(iOS)
         .fullScreenCover(isPresented: $showReader) {
-            BookReaderView(book: book)
+            BookReaderView(book: book, account: account)
         }
         #else
         .sheet(isPresented: $showReader) {
-            BookReaderView(book: book)
+            BookReaderView(book: book, account: account)
         }
         #endif
+    }
+
+    private var isBookDownloaded: Bool {
+        DownloadManager.shared.isDownloaded(contentType: .book, contentId: book.id)
+    }
+
+    private func downloadBook() {
+        hapticImpact(.medium)
+        DownloadManager.shared.enqueueDownload(
+            contentType: .book,
+            contentId: book.id,
+            title: book.title,
+            subtitle: book.author,
+            thumbnailPath: "/api/books/cover/\(book.id)",
+            fileSize: book.fileSize,
+            downloadPath: "/api/books/read/\(book.id)"
+        )
     }
 
     private var statusColor: Color {
@@ -164,7 +203,7 @@ struct BookDetailView: View {
 
 #Preview {
     NavigationStack {
-        BookDetailView(book: .preview)
+        BookDetailView(book: .preview, account: Account.previewAccounts[0])
             .environmentObject(APIClient())
     }
     .preferredColorScheme(.dark)

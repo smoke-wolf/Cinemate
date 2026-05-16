@@ -22,17 +22,13 @@ struct ArtistView: View {
                 VStack(spacing: 24) {
                     // Artist Header
                     VStack(spacing: 16) {
-                        // Avatar — Spotify image or placeholder
-                        if let imageURL = profile?.imageURL, let url = URL(string: imageURL) {
-                            CachedAsyncImage(url: url) {
-                                artistPlaceholder
-                            }
-                            .frame(width: 140, height: 140)
-                            .clipShape(Circle())
-                            .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 10)
-                        } else {
+                        // Avatar — Spotify image, server artist image, or placeholder
+                        CachedAsyncImage(url: artistImageURL) {
                             artistPlaceholder
                         }
+                        .frame(width: 140, height: 140)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 10)
 
                         Text(artist.name)
                             .font(.system(size: 26, weight: .bold))
@@ -116,7 +112,7 @@ struct ArtistView: View {
                                 ForEach(albums) { album in
                                     NavigationLink(destination: AlbumView(album: album)) {
                                         VStack(alignment: .leading, spacing: 8) {
-                                            CachedAsyncImage(url: nil) {
+                                            CachedAsyncImage(url: apiClient.albumArtURL(albumId: album.id)) {
                                                 AlbumArtPlaceholder(size: 170)
                                             }
                                             .aspectRatio(1, contentMode: .fill)
@@ -130,7 +126,7 @@ struct ArtistView: View {
 
                                                 HStack(spacing: 4) {
                                                     if let year = album.year {
-                                                        Text("\(year)")
+                                                        Text(String(year))
                                                     }
                                                     Text("\u{2022} \(album.trackCountDisplay)")
                                                 }
@@ -156,6 +152,16 @@ struct ArtistView: View {
             async let albumsTask: () = loadAlbums()
             _ = await (profileTask, albumsTask)
         }
+    }
+
+    /// Best available artist image URL: prefer Spotify image_url from the
+    /// enriched profile, fall back to the server's artist image endpoint which
+    /// serves album art or a downloaded Spotify image.
+    private var artistImageURL: URL? {
+        if let imageURL = profile?.imageURL, let url = URL(string: imageURL) {
+            return url
+        }
+        return apiClient.artistImageURL(name: artist.name)
     }
 
     private var artistPlaceholder: some View {
@@ -185,7 +191,7 @@ struct ArtistView: View {
     private func loadAlbums() async {
         do {
             let allAlbums = try await apiClient.getAlbums()
-            albums = allAlbums.filter { $0.artist == artist.name }
+            albums = allAlbums.filter { $0.artist.localizedCaseInsensitiveCompare(artist.name) == .orderedSame }
         } catch {}
     }
 }

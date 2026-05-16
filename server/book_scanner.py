@@ -71,29 +71,40 @@ def parse_book_filename(filepath: str) -> dict:
     name = Path(filepath).stem
     ext = Path(filepath).suffix.lower().lstrip(".")
 
-    # Try "Author - Title" pattern
     author = None
     title = name
 
-    if " - " in name:
-        parts = name.split(" - ", 1)
-        author = parts[0].strip()
-        title = parts[1].strip()
-    elif " by " in name.lower():
-        idx = name.lower().index(" by ")
-        title = name[:idx].strip()
-        author = name[idx + 4:].strip()
+    # Clean up underscores/dots first
+    name_clean = re.sub(r"[._]", " ", name)
+    name_clean = re.sub(r"\s+", " ", name_clean).strip()
 
-    # Clean up underscores/dots
-    title = re.sub(r"[._]", " ", title)
-    title = re.sub(r"\s+", " ", title).strip()
-    if author:
-        author = re.sub(r"[._]", " ", author)
-        author = re.sub(r"\s+", " ", author).strip()
+    # Try "Author - Title" or "Title - Author" with spaces
+    if " - " in name_clean:
+        parts = name_clean.split(" - ", 1)
+        title = parts[0].strip()
+        author = parts[1].strip()
+    elif " by " in name_clean.lower():
+        idx = name_clean.lower().index(" by ")
+        title = name_clean[:idx].strip()
+        author = name_clean[idx + 4:].strip()
+    elif "-" in name_clean:
+        # Handle "Title-Author" (no spaces around hyphen)
+        parts = name_clean.split("-", 1)
+        left = parts[0].strip()
+        right = parts[1].strip()
+        # If left is purely numeric (like "1984"), it's a title, right is author
+        if left.isdigit():
+            title = left
+            author = right
+        else:
+            title = left
+            author = right
+    else:
+        title = name_clean
 
-    # Try to extract year from parentheses
+    # Try to extract year from parentheses in title
     year = None
-    year_match = re.search(r"[\(\[\{]?((?:19|20)\d{2})[\)\]\}]?", title)
+    year_match = re.search(r"[\(\[\{]((?:19|20)\d{2})[\)\]\}]", title)
     if year_match:
         candidate = int(year_match.group(1))
         if 1800 <= candidate <= 2030:
