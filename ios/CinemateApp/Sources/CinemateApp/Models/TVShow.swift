@@ -99,6 +99,32 @@ struct Episode: Identifiable, Codable, Hashable {
         case isWatched = "is_watched"
         case watchProgress = "watch_progress"
     }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let intId = try? c.decode(Int.self, forKey: .id) {
+            id = String(intId)
+        } else {
+            id = try c.decode(String.self, forKey: .id)
+        }
+        number = try c.decodeIfPresent(Int.self, forKey: .number) ?? 0
+        title = try c.decode(String.self, forKey: .title)
+        description = try c.decodeIfPresent(String.self, forKey: .description)
+        duration = try c.decodeIfPresent(TimeInterval.self, forKey: .duration)
+        thumbnailURL = try c.decodeIfPresent(String.self, forKey: .thumbnailURL)
+        streamURL = try c.decodeIfPresent(String.self, forKey: .streamURL)
+        isWatched = (try? c.decode(Bool.self, forKey: .isWatched)) ?? false
+        watchProgress = (try? c.decode(Double.self, forKey: .watchProgress)) ?? 0
+    }
+
+    init(id: String, number: Int, title: String, description: String?,
+         duration: TimeInterval?, thumbnailURL: String?, streamURL: String?,
+         isWatched: Bool, watchProgress: Double) {
+        self.id = id; self.number = number; self.title = title
+        self.description = description; self.duration = duration
+        self.thumbnailURL = thumbnailURL; self.streamURL = streamURL
+        self.isWatched = isWatched; self.watchProgress = watchProgress
+    }
 }
 
 extension TVShow {

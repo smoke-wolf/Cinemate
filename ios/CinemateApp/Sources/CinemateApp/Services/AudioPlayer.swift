@@ -32,6 +32,7 @@ final class AudioPlayer: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var statusObserver: NSKeyValueObservation?
+    private var endObserver: NSObjectProtocol?
     private var originalQueue: [MusicTrack] = []
     private var currentIndex: Int = 0
     private var lastBaseURL: String = ""
@@ -179,8 +180,8 @@ final class AudioPlayer: ObservableObject {
         fetchLyrics(baseURL: effectiveBase)
         onTrackPlayed?(track)
 
-        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
-        NotificationCenter.default.addObserver(
+        removeEndObserver()
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
@@ -240,8 +241,8 @@ final class AudioPlayer: ObservableObject {
         addTimeObserver()
         updateNowPlayingInfo()
 
-        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
-        NotificationCenter.default.addObserver(
+        removeEndObserver()
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
@@ -299,8 +300,8 @@ final class AudioPlayer: ObservableObject {
         addTimeObserver()
         updateNowPlayingInfo()
 
-        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
-        NotificationCenter.default.addObserver(
+        removeEndObserver()
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
@@ -400,6 +401,7 @@ final class AudioPlayer: ObservableObject {
         duration = 0
         albumArtURL = nil
         removeTimeObserver()
+        removeEndObserver()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
@@ -427,6 +429,13 @@ final class AudioPlayer: ObservableObject {
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
+        }
+    }
+
+    private func removeEndObserver() {
+        if let observer = endObserver {
+            NotificationCenter.default.removeObserver(observer)
+            endObserver = nil
         }
     }
 

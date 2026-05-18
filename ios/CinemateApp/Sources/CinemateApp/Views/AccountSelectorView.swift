@@ -88,7 +88,14 @@ struct AccountSelectorView: View {
         }
         .sheet(isPresented: $showAddProfile) {
             AddProfileSheet { newAccount in
-                accounts.append(newAccount)
+                Task {
+                    do {
+                        let saved = try await apiClient.createAccount(newAccount)
+                        accounts.append(saved)
+                    } catch {
+                        accounts.append(newAccount)
+                    }
+                }
                 showAddProfile = false
             }
         }

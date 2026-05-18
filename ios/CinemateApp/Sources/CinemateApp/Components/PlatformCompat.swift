@@ -198,6 +198,12 @@ struct PDFViewRepresentable: UIViewRepresentable {
 
     func updateUIView(_ pdfView: PDFView, context: Context) {
         pdfView.backgroundColor = nightMode ? .black : UIColor(Color(hex: "#1C1C1E"))
+
+        if let document = pdfView.document,
+           let targetPage = document.page(at: currentPage),
+           pdfView.currentPage != targetPage {
+            pdfView.go(to: targetPage)
+        }
     }
 
     func makeCoordinator() -> PDFCoordinator {
