@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import (
+    Depends,
     FastAPI,
     HTTPException,
     Query,
@@ -34,6 +35,7 @@ from pydantic import BaseModel
 
 from database import get_db, init_db, load_config, save_config, THUMBNAIL_DIR
 from scanner import scan_directory, scan_state, parse_filename
+from auth import require_admin
 from wan_routes import router as wan_router
 from music_routes import router as music_router
 from book_routes import router as book_router
@@ -313,6 +315,18 @@ def row_to_dict(row) -> dict:
 # 1. LIBRARY MANAGEMENT
 # ===========================================================================
 
+_LIBRARY_SORT_COLUMNS = {
+    "title": "title",
+    "year": "year",
+    "date_added": "date_added",
+    "file_size": "file_size",
+    "duration": "duration",
+    "rating": "rating",
+}
+
+_ORDER_DIRECTIONS = {"asc": "ASC", "desc": "DESC"}
+
+
 @app.get("/api/library")
 async def list_library(
     search: Optional[str] = None,
@@ -325,6 +339,13 @@ async def list_library(
     offset: int = Query(0, ge=0),
 ):
     """List all media with filtering, sorting, and pagination."""
+    safe_sort = _LIBRARY_SORT_COLUMNS.get(sort)
+    if not safe_sort:
+        raise HTTPException(400, f"Invalid sort column: {sort}")
+    safe_order = _ORDER_DIRECTIONS.get(order)
+    if not safe_order:
+        raise HTTPException(400, f"Invalid order direction: {order}")
+
     db = await get_db()
     try:
         conditions = []
@@ -344,7 +365,7 @@ async def list_library(
             params.append(media_type)
 
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
-        order_clause = f" ORDER BY {sort} {order.upper()}"
+        order_clause = f" ORDER BY {safe_sort} {safe_order}"
 
         # Total count
         cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM media{where}", params)
@@ -1011,7 +1032,7 @@ async def server_clients():
 
 
 @app.put("/api/server/settings")
-async def update_server_settings(data: ServerSettingsUpdate):
+async def update_server_settings(data: ServerSettingsUpdate, _admin: dict = Depends(require_admin)):
     """Update server settings."""
     cfg = load_config()
     if data.server_name is not None:
@@ -1218,7 +1239,7 @@ async def websocket_endpoint(websocket: WebSocket):
 # ===========================================================================
 
 @app.get("/api/admin/connections")
-async def admin_connections():
+async def admin_connections(_admin: dict = Depends(require_admin)):
     """All active connections with details."""
     db = await get_db()
     try:
@@ -1239,7 +1260,7 @@ async def admin_connections():
 
 
 @app.post("/api/admin/kick/{client_id}")
-async def kick_client(client_id: str):
+async def kick_client(client_id: str, _admin: dict = Depends(require_admin)):
     """Disconnect a client by closing their WebSocket."""
     ws = ws_manager.active.get(client_id)
     if not ws:
@@ -1263,7 +1284,7 @@ async def kick_client(client_id: str):
 
 
 @app.put("/api/admin/access")
-async def update_access_rules(data: AccessRulesUpdate):
+async def update_access_rules(data: AccessRulesUpdate, _admin: dict = Depends(require_admin)):
     """Configure access rules."""
     cfg = load_config()
     cfg["access_mode"] = data.access_mode

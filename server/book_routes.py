@@ -1,6 +1,7 @@
 """Book library API routes — FastAPI router for e-books/digital books."""
 
 import asyncio
+import logging
 import os
 import re
 from datetime import datetime
@@ -13,6 +14,8 @@ from pydantic import BaseModel
 
 from database import get_db
 from book_scanner import book_scan_state, scan_books_directory
+
+logger = logging.getLogger("cinemate.books")
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 
@@ -86,22 +89,40 @@ async def list_books(
 
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
 
+        _book_sort_columns = {
+            "title": "b.title",
+            "author": "b.author",
+            "date_added": "b.date_added",
+            "year": "b.year",
+            "file_size": "b.file_size",
+            "page_count": "b.page_count",
+        }
+        _book_order_directions = {"asc": "ASC", "desc": "DESC"}
+
+        safe_sort = _book_sort_columns.get(sort)
+        if not safe_sort:
+            raise HTTPException(400, f"Invalid sort column: {sort}")
+        safe_order = _book_order_directions.get(order)
+        if not safe_order:
+            raise HTTPException(400, f"Invalid order direction: {order}")
+
         if account_id is not None:
-            join = f" LEFT JOIN book_account_data bad ON b.id = bad.book_id AND bad.account_id = {int(account_id)}"
+            join = " LEFT JOIN book_account_data bad ON b.id = bad.book_id AND bad.account_id = ?"
+            join_params = [account_id]
             select = "b.*, COALESCE(bad.favorite, 0) as favorite, COALESCE(bad.reading_progress, 0.0) as reading_progress, COALESCE(bad.current_page, 0) as current_page, COALESCE(bad.finished, 0) as finished"
         else:
             join = ""
+            join_params = []
             select = "b.*"
 
-        order_col = f"b.{sort}" if sort != "date_added" else "b.date_added"
-        order_clause = f" ORDER BY {order_col} {order.upper()}"
+        order_clause = f" ORDER BY {safe_sort} {safe_order}"
 
-        cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM books b{join}{where}", params)
+        cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM books b{join}{where}", join_params + params)
         total = (await cursor.fetchone())["cnt"]
 
         cursor = await db.execute(
             f"SELECT {select} FROM books b{join}{where}{order_clause} LIMIT ? OFFSET ?",
-            params + [limit, offset],
+            join_params + params + [limit, offset],
         )
         rows = await cursor.fetchall()
         items = []
