@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DownloadRow: View {
+    @EnvironmentObject var apiClient: APIClient
     let record: DownloadRecord
     let onCancel: () -> Void
     let onRetry: () -> Void
@@ -45,7 +46,7 @@ struct DownloadRow: View {
                             Text("\u{2022}")
                                 .font(.system(size: 8))
                                 .foregroundStyle(Theme.textTertiary)
-                            Text(date, style: .relative)
+                            Text(date, format: .dateTime.month(.abbreviated).day().hour().minute())
                                 .font(.system(size: 12))
                                 .foregroundStyle(Theme.textTertiary)
                         }
@@ -73,20 +74,23 @@ struct DownloadRow: View {
     // MARK: - Thumbnail
 
     private var thumbnailView: some View {
-        RoundedRectangle(cornerRadius: Theme.cornerSmall)
-            .fill(
-                LinearGradient(
-                    colors: [Theme.cardSurface, Theme.elevatedSurface],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+        CachedAsyncImage(url: apiClient.thumbnailURL(for: record.thumbnailPath)) {
+            RoundedRectangle(cornerRadius: Theme.cornerSmall)
+                .fill(
+                    LinearGradient(
+                        colors: [Theme.cardSurface, Theme.elevatedSurface],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                 )
-            )
-            .frame(width: 52, height: 52)
-            .overlay {
-                Image(systemName: contentTypeIcon)
-                    .font(.system(size: 20))
-                    .foregroundStyle(Theme.textTertiary)
-            }
+                .overlay {
+                    Image(systemName: contentTypeIcon)
+                        .font(.system(size: 20))
+                        .foregroundStyle(Theme.textTertiary)
+                }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.cornerSmall))
     }
 
     private var contentTypeIcon: String {
@@ -193,4 +197,5 @@ struct DownloadRow: View {
         }
         .padding()
     }
+    .environmentObject(APIClient())
 }

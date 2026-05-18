@@ -10,6 +10,10 @@ struct NowPlayingView: View {
     @State private var artworkScale: CGFloat = 1.0
     @Environment(\.dismiss) var dismiss
 
+    @State private var showToast = false
+    @State private var toastIcon = ""
+    @State private var toastMessage = ""
+
     var body: some View {
         ZStack {
             // Gradient background
@@ -119,7 +123,11 @@ struct NowPlayingView: View {
                     // Main Controls
                     HStack(spacing: 0) {
                         // Shuffle
-                        Button(action: { audioPlayer.toggleShuffle() }) {
+                        Button(action: {
+                            hapticImpact(.light)
+                            audioPlayer.toggleShuffle()
+                            showFeedback(icon: "shuffle", message: audioPlayer.isShuffled ? "Shuffle On" : "Shuffle Off")
+                        }) {
                             Image(systemName: "shuffle")
                                 .font(.system(size: 18))
                                 .foregroundStyle(audioPlayer.isShuffled ? Theme.primaryGold : Theme.textSecondary)
@@ -127,7 +135,10 @@ struct NowPlayingView: View {
                         .frame(maxWidth: .infinity)
 
                         // Previous
-                        Button(action: { audioPlayer.previous() }) {
+                        Button(action: {
+                            hapticImpact(.medium)
+                            audioPlayer.previous()
+                        }) {
                             Image(systemName: "backward.fill")
                                 .font(.system(size: 28))
                                 .foregroundStyle(Theme.textPrimary)
@@ -154,7 +165,10 @@ struct NowPlayingView: View {
                         .frame(maxWidth: .infinity)
 
                         // Next
-                        Button(action: { audioPlayer.next() }) {
+                        Button(action: {
+                            hapticImpact(.medium)
+                            audioPlayer.next()
+                        }) {
                             Image(systemName: "forward.fill")
                                 .font(.system(size: 28))
                                 .foregroundStyle(Theme.textPrimary)
@@ -162,7 +176,17 @@ struct NowPlayingView: View {
                         .frame(maxWidth: .infinity)
 
                         // Repeat
-                        Button(action: { audioPlayer.toggleRepeat() }) {
+                        Button(action: {
+                            hapticImpact(.light)
+                            audioPlayer.toggleRepeat()
+                            let msg: String
+                            switch audioPlayer.repeatMode {
+                            case .off: msg = "Repeat Off"
+                            case .all: msg = "Repeat All"
+                            case .one: msg = "Repeat One"
+                            }
+                            showFeedback(icon: audioPlayer.repeatMode.icon, message: msg)
+                        }) {
                             Image(systemName: audioPlayer.repeatMode.icon)
                                 .font(.system(size: 18))
                                 .foregroundStyle(audioPlayer.repeatMode.isActive ? Theme.primaryGold : Theme.textSecondary)
@@ -199,9 +223,14 @@ struct NowPlayingView: View {
                         // Favorite
                         Button(action: {
                             hapticImpact(.light)
+                            let wasFavorite = track.isFavorite
                             Task {
                                 try? await apiClient.toggleMusicFavorite(accountId: Int(account.id) ?? 0, trackId: track.id)
                                 audioPlayer.currentTrack?.isFavorite.toggle()
+                                showFeedback(
+                                    icon: wasFavorite ? "heart" : "heart.fill",
+                                    message: wasFavorite ? "Removed from Favorites" : "Added to Favorites"
+                                )
                             }
                         }) {
                             Image(systemName: track.isFavorite ? "heart.fill" : "heart")
@@ -212,10 +241,13 @@ struct NowPlayingView: View {
 
                         // Lyrics
                         Button(action: {
+                            hapticImpact(.light)
                             if audioPlayer.hasLyrics {
                                 withAnimation(.easeInOut(duration: 0.3)) {
                                     showLyrics.toggle()
                                 }
+                            } else {
+                                showFeedback(icon: "quote.bubble", message: "No lyrics available")
                             }
                         }) {
                             Image(systemName: "quote.bubble")
@@ -234,7 +266,10 @@ struct NowPlayingView: View {
                             .frame(maxWidth: .infinity)
 
                         // Queue
-                        Button(action: { showQueue.toggle() }) {
+                        Button(action: {
+                            hapticImpact(.light)
+                            showQueue.toggle()
+                        }) {
                             Image(systemName: "list.bullet")
                                 .font(.system(size: 20))
                                 .foregroundStyle(Theme.textSecondary)
@@ -255,6 +290,13 @@ struct NowPlayingView: View {
         .sheet(isPresented: $showQueue) {
             QueueView()
         }
+        .toast(isPresented: $showToast, icon: toastIcon, message: toastMessage, edge: .top)
+    }
+
+    private func showFeedback(icon: String, message: String) {
+        toastIcon = icon
+        toastMessage = message
+        withAnimation { showToast = true }
     }
 
     private func formatTime(_ seconds: TimeInterval) -> String {

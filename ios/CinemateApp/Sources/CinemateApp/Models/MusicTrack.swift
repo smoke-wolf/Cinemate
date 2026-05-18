@@ -44,7 +44,13 @@ struct MusicTrack: Identifiable, Codable, Hashable {
         albumId = try container.decodeIfPresent(Int.self, forKey: .albumId)
         trackNumber = try container.decodeIfPresent(Int.self, forKey: .trackNumber)
         duration = try container.decodeIfPresent(TimeInterval.self, forKey: .duration) ?? 0
-        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        if let boolVal = try? container.decodeIfPresent(Bool.self, forKey: .isFavorite) {
+            isFavorite = boolVal
+        } else if let intVal = try? container.decodeIfPresent(Int.self, forKey: .isFavorite) {
+            isFavorite = intVal != 0
+        } else {
+            isFavorite = false
+        }
         playCount = try container.decodeIfPresent(Int.self, forKey: .playCount) ?? 0
     }
 

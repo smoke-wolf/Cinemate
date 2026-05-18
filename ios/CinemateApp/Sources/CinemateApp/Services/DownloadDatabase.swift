@@ -26,6 +26,12 @@ final class DownloadDatabase {
         }
     }
 
+    private static let selectColumns = """
+        id, content_type, content_id, title, subtitle, thumbnail_path,
+        download_path, status, file_size, bytes_downloaded,
+        local_file_name, downloaded_at, error_message
+        """
+
     // MARK: - Schema
 
     private func createTable() {
@@ -37,7 +43,6 @@ final class DownloadDatabase {
             title TEXT NOT NULL,
             subtitle TEXT,
             thumbnail_path TEXT,
-            download_path TEXT,
             status TEXT NOT NULL DEFAULT 'queued',
             file_size INTEGER NOT NULL DEFAULT 0,
             bytes_downloaded INTEGER NOT NULL DEFAULT 0,
@@ -130,11 +135,11 @@ final class DownloadDatabase {
     // MARK: - Queries
 
     func fetchAll() -> [DownloadRecord] {
-        query("SELECT * FROM downloads ORDER BY downloaded_at DESC, title ASC;")
+        query("SELECT \(Self.selectColumns) FROM downloads ORDER BY downloaded_at DESC, title ASC;")
     }
 
     func fetch(contentType: DownloadContentType, contentId: Int) -> DownloadRecord? {
-        let sql = "SELECT * FROM downloads WHERE content_type = ? AND content_id = ? LIMIT 1;"
+        let sql = "SELECT \(Self.selectColumns) FROM downloads WHERE content_type = ? AND content_id = ? LIMIT 1;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             printError("fetch prepare")
@@ -150,7 +155,7 @@ final class DownloadDatabase {
     }
 
     func fetchByStatus(_ status: DownloadStatus) -> [DownloadRecord] {
-        let sql = "SELECT * FROM downloads WHERE status = ? ORDER BY title ASC;"
+        let sql = "SELECT \(Self.selectColumns) FROM downloads WHERE status = ? ORDER BY title ASC;"
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             printError("fetchByStatus prepare")

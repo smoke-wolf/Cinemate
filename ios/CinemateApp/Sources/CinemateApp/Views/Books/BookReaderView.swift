@@ -18,6 +18,14 @@ struct BookReaderView: View {
 
     private var isEpub: Bool { book.format.uppercased() == "EPUB" }
 
+    private var isDownloaded: Bool {
+        DownloadManager.shared.isDownloaded(contentType: .book, contentId: book.id)
+    }
+
+    private var localFileURL: URL? {
+        DownloadManager.shared.localFileURL(contentType: .book, contentId: book.id)
+    }
+
     init(book: Book, account: Account) {
         self.book = book
         self.account = account
@@ -44,7 +52,7 @@ struct BookReaderView: View {
                 }
             } else {
                 PDFViewRepresentable(
-                    url: apiClient.bookReadURL(bookId: book.id),
+                    url: localFileURL ?? apiClient.bookReadURL(bookId: book.id),
                     currentPage: $currentPage,
                     totalPages: $totalPages,
                     nightMode: nightMode

@@ -221,6 +221,15 @@ final class APIClient: ObservableObject {
         try await get("/api/accounts/\(accountId)/playlists/\(playlistId)")
     }
 
+    func updatePlaylist(accountId: Int, playlistId: Int, name: String, description: String?) async throws -> Playlist {
+        try await put("/api/accounts/\(accountId)/playlists/\(playlistId)",
+                      body: UpdatePlaylistBody(name: name, description: description))
+    }
+
+    func removeTrackFromPlaylist(accountId: Int, playlistId: Int, trackId: Int) async throws {
+        try await delete("/api/accounts/\(accountId)/playlists/\(playlistId)/tracks/\(trackId)")
+    }
+
     func streamURL(trackId: Int) -> URL? {
         URL(string: "\(baseURL)/api/music/stream/\(trackId)")
     }
@@ -443,6 +452,18 @@ final class APIClient: ObservableObject {
         try validateResponse(response)
     }
 
+    private func delete(_ path: String) async throws {
+        guard let url = URL(string: "\(baseURL)\(path)") else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+
+        let (_, response) = try await session.data(for: request)
+        try validateResponse(response)
+    }
+
     private func validateResponse(_ response: URLResponse) throws {
         guard let httpResponse = response as? HTTPURLResponse else { return }
         switch httpResponse.statusCode {
@@ -457,6 +478,7 @@ final class APIClient: ObservableObject {
 private struct EmptyBody: Encodable {}
 private struct BookmarkBody: Encodable { let page: Int; let note: String? }
 private struct CreatePlaylistBody: Encodable { let name: String; let description: String? }
+private struct UpdatePlaylistBody: Encodable { let name: String; let description: String? }
 private struct AddTrackBody: Encodable {
     let trackIds: [Int]
     enum CodingKeys: String, CodingKey { case trackIds = "track_ids" }

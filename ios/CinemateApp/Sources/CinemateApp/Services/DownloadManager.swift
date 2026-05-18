@@ -22,7 +22,6 @@ final class DownloadManager: ObservableObject {
         if url.hasSuffix("/") { url = String(url.dropLast()) }
         if !url.hasPrefix("http") { url = "http://\(url)" }
         self.serverBaseURL = url
-        print("[DL] configured serverBaseURL=\(url)")
     }
 
     // MARK: - Enqueue
@@ -56,9 +55,7 @@ final class DownloadManager: ObservableObject {
 
         let path = downloadPath.hasPrefix("/") ? downloadPath : "/\(downloadPath)"
         let urlString = "\(serverBaseURL)\(path)"
-        print("[DL] enqueue id=\(id) serverBaseURL='\(serverBaseURL)' urlString='\(urlString)'")
         guard let url = URL(string: urlString) else {
-            print("[DL] FAILED: invalid URL from '\(urlString)'")
             var failed = record
             failed.status = .failed
             failed.errorMessage = "Invalid URL"
@@ -67,7 +64,6 @@ final class DownloadManager: ObservableObject {
             return
         }
 
-        print("[DL] starting task for \(url.absoluteString)")
         let task = Task {
             await self.runDownload(id: id, url: url, contentType: contentType)
         }
@@ -77,28 +73,21 @@ final class DownloadManager: ObservableObject {
     // MARK: - Download Logic
 
     private func runDownload(id: String, url: URL, contentType: DownloadContentType) async {
-        print("[DL] runDownload START id=\(id) url=\(url)")
         do {
-            print("[DL] calling URLSession.shared.download...")
             let (tempURL, response) = try await URLSession.shared.download(from: url)
-            print("[DL] download finished, tempURL=\(tempURL)")
 
             guard !Task.isCancelled else {
-                print("[DL] task was cancelled")
                 try? FileManager.default.removeItem(at: tempURL)
                 return
             }
 
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                print("[DL] FAILED: server error \(code)")
                 failRecord(id: id, message: "Server error \(code)")
                 return
             }
-            print("[DL] HTTP \(http.statusCode), content-length=\(http.expectedContentLength)")
 
             guard var record = findRecord(id: id) else {
-                print("[DL] record not found after download, cleaning up")
                 try? FileManager.default.removeItem(at: tempURL)
                 return
             }
@@ -110,13 +99,11 @@ final class DownloadManager: ObservableObject {
             let ext = url.pathExtension.isEmpty ? "" : ".\(url.pathExtension)"
             let fileName = "\(record.contentId)_\(sanitized)\(ext)"
             let dest = dir.appendingPathComponent(fileName)
-            print("[DL] moving to \(dest.path)")
             try? FileManager.default.removeItem(at: dest)
             try FileManager.default.moveItem(at: tempURL, to: dest)
 
             let attrs = try? FileManager.default.attributesOfItem(atPath: dest.path)
             let size = (attrs?[.size] as? Int64) ?? record.fileSize
-            print("[DL] COMPLETED id=\(id) size=\(size)")
 
             record.status = .completed
             record.localFileName = fileName
@@ -127,10 +114,8 @@ final class DownloadManager: ObservableObject {
             runningTasks.removeValue(forKey: id)
             refreshState()
         } catch is CancellationError {
-            print("[DL] CancellationError id=\(id)")
             return
         } catch {
-            print("[DL] ERROR id=\(id): \(error)")
             failRecord(id: id, message: error.localizedDescription)
         }
     }
@@ -210,12 +195,15 @@ final class DownloadManager: ObservableObject {
     // MARK: - State
 
     func refreshState() {
+        objectWillChange.send()
         let all = db.fetchAll()
-        activeDownloads = all.filter {
+        let newActive = all.filter {
             $0.status == .queued || $0.status == .downloading || $0.status == .paused || $0.status == .failed
         }
-        completedDownloads = all.filter { $0.status == .completed }
-        isDownloading = activeDownloads.contains { $0.status == .downloading }
+        let newCompleted = all.filter { $0.status == .completed }
+        activeDownloads = newActive
+        completedDownloads = newCompleted
+        isDownloading = newActive.contains { $0.status == .downloading }
     }
 
     // MARK: - Helpers

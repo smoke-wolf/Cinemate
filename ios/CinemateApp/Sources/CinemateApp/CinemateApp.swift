@@ -24,6 +24,7 @@ struct CinemateApp: App {
         case splash
         case connecting(String)
         case serverConnect
+        case offline
         case accountSelect
         case main(Account)
     }
@@ -73,7 +74,11 @@ struct CinemateApp: App {
                                 guard !Task.isCancelled else { return }
                                 await MainActor.run {
                                     withAnimation(.easeInOut(duration: 0.4)) {
-                                        appState = .serverConnect
+                                        if !DownloadManager.shared.completedDownloads.isEmpty {
+                                            appState = .offline
+                                        } else {
+                                            appState = .serverConnect
+                                        }
                                     }
                                 }
                             }
@@ -91,6 +96,17 @@ struct CinemateApp: App {
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal: .move(edge: .leading).combined(with: .opacity)
                     ))
+
+                case .offline:
+                    OfflineLibraryView(onReconnect: {
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            appState = .accountSelect
+                        }
+                    })
+                    .environmentObject(apiClient)
+                    .environmentObject(audioPlayer)
+                    .environmentObject(downloadManager)
+                    .transition(.opacity)
 
                 case .accountSelect:
                     AccountSelectorView { account in
@@ -117,7 +133,11 @@ struct CinemateApp: App {
             .onChange(of: apiClient.isConnected) { _, connected in
                 if !connected {
                     withAnimation(.easeInOut(duration: 0.4)) {
-                        appState = .serverConnect
+                        if !DownloadManager.shared.completedDownloads.isEmpty {
+                            appState = .offline
+                        } else {
+                            appState = .serverConnect
+                        }
                     }
                 }
             }
@@ -131,6 +151,7 @@ struct CinemateApp: App {
         case .splash: return "splash"
         case .connecting: return "connecting"
         case .serverConnect: return "serverConnect"
+        case .offline: return "offline"
         case .accountSelect: return "accountSelect"
         case .main: return "main"
         }

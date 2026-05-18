@@ -26,6 +26,7 @@
 		48480DADB95805F74A58F91E /* SplashScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACD06CF0A6E7F52BA1776602 /* SplashScreen.swift */; };
 		C0NNEC71NGBF0001DEADBEEF /* ConnectingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0NNEC71NGRF0002DEADBEEF /* ConnectingView.swift */; };
 		4B90BCCEFB787F6BE12377DA /* ShimmerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF59F8F15306DF33C83A6846 /* ShimmerView.swift */; };
+		T0A5TVIEWBF000100000001 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = T0A5TVIEWRF000200000001 /* ToastView.swift */; };
 		4BC7941D0598037ECF3ED1FE /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA5512275535ECC0BD51CBB /* ProfileView.swift */; };
 		58AF7653D06B68D2A9ACC483 /* GoldButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7EBF49D0F82EBAF8945B807 /* GoldButton.swift */; };
 		5D8A14CC0C872B0530700B04 /* TVShowDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BB97BD4C1B7C9B103768653 /* TVShowDetailView.swift */; };
@@ -60,6 +61,7 @@
 		EB8651C93DDE1D46D9C14004 /* MusicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0DFB6132A64598F15C3FF2 /* MusicView.swift */; };
 		EC14A1C2368E3A6594789B06 /* BookReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CA0A618DBDB39F944CA62EA /* BookReaderView.swift */; };
 		FD47A1B7E4AB2DA06F9E0835 /* ServerDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D144533C12B66A2545FA592 /* ServerDiscovery.swift */; };
+		0FF11NEBF000100000001 /* OfflineLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FF11NERF000200000001 /* OfflineLibraryView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -114,10 +116,12 @@
 		D9B121BF17B2D40713D19B66 /* TVShowsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVShowsView.swift; sourceTree = "<group>"; };
 		D9FBE0918F3380B585521A7B /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		DF59F8F15306DF33C83A6846 /* ShimmerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShimmerView.swift; sourceTree = "<group>"; };
+		T0A5TVIEWRF000200000001 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		DF823034A321F2178AB743E9 /* DownloadModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadModels.swift; sourceTree = "<group>"; };
 		FEA2FEED2363B9C8044CB509 /* DownloadDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadDatabase.swift; sourceTree = "<group>"; };
 		FF80F8AA1F34EFB26E507C6F /* ProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressBar.swift; sourceTree = "<group>"; };
 		FFB4BA9572DCFD5EEB5A32E5 /* NowPlayingBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingBar.swift; sourceTree = "<group>"; };
+		0FF11NERF000200000001 /* OfflineLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLibraryView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -198,6 +202,7 @@
 				FF80F8AA1F34EFB26E507C6F /* ProgressBar.swift */,
 				1503274671B2769AD50511A1 /* QualityBadge.swift */,
 				DF59F8F15306DF33C83A6846 /* ShimmerView.swift */,
+				T0A5TVIEWRF000200000001 /* ToastView.swift */,
 				79E07E84918646B986D64D62 /* StarRating.swift */,
 				B070971D17AA71FA0805C46F /* Theme.swift */,
 			);
@@ -236,6 +241,7 @@
 			children = (
 				340F6CA4165F6157C0DD9DB5 /* AccountSelectorView.swift */,
 				D9FBE0918F3380B585521A7B /* MainTabView.swift */,
+				0FF11NERF000200000001 /* OfflineLibraryView.swift */,
 				58D308D36B2FA7EC7CBE3E12 /* QRScannerView.swift */,
 				9A0F845746DD8E7C74A0FAE1 /* ServerConnectView.swift */,
 				C0NNEC71NGRF0002DEADBEEF /* ConnectingView.swift */,
@@ -410,6 +416,7 @@
 				75274730CFDC6AE765E0C0D9 /* ServerInfo.swift in Sources */,
 				3C39D5A1168CAABAEF85D089 /* SettingsView.swift in Sources */,
 				4B90BCCEFB787F6BE12377DA /* ShimmerView.swift in Sources */,
+				T0A5TVIEWBF000100000001 /* ToastView.swift in Sources */,
 				C0NNEC71NGBF0001DEADBEEF /* ConnectingView.swift in Sources */,
 				48480DADB95805F74A58F91E /* SplashScreen.swift in Sources */,
 				43968F86E455AACBEB2C1F04 /* StarRating.swift in Sources */,
@@ -418,6 +425,7 @@
 				46435DAA94BCE06A742D4214 /* TVShowsView.swift in Sources */,
 				7F5DB05617A0AA024B55F55A /* Theme.swift in Sources */,
 				3473BC322BE2C9656FDD935D /* TrackRow.swift in Sources */,
+				0FF11NEBF000100000001 /* OfflineLibraryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

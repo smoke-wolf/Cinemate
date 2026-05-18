@@ -106,9 +106,9 @@ struct MusicView: View {
             } else {
                 LazyVStack(spacing: 2) {
                     ForEach(recentTracks) { track in
-                        TrackRow(track: track) {
+                        TrackRow(track: track, showTrackNumber: false, onTap: {
                             audioPlayer.playTrack(track, from: apiClient.baseURL, queue: recentTracks)
-                        }
+                        })
                     }
                 }
                 .padding(.bottom, 140)

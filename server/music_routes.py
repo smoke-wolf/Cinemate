@@ -1083,7 +1083,12 @@ async def get_playlist(account_id: int, playlist_id: int):
         tracks = await cursor.fetchall()
 
         result = row_to_dict(playlist)
-        result["tracks"] = [row_to_dict(t) for t in tracks]
+        track_list = []
+        for t in tracks:
+            td = row_to_dict(t)
+            td["is_favorite"] = bool(td.get("is_favorite")) if td.get("is_favorite") is not None else False
+            track_list.append(td)
+        result["tracks"] = track_list
         return result
     finally:
         await db.close()
@@ -1265,11 +1270,12 @@ async def music_recently_played(
                       t.track_number, t.disc_number, t.year, t.genre,
                       t.duration, t.bitrate, t.sample_rate, t.format,
                       t.file_size, t.album_id,
-                      h.played_at, h.duration_listened
+                      MAX(h.played_at) AS played_at, h.duration_listened
                FROM music_play_history h
                JOIN music_tracks t ON t.id = h.track_id
                WHERE h.account_id = ?
-               ORDER BY h.played_at DESC
+               GROUP BY t.id
+               ORDER BY played_at DESC
                LIMIT ?""",
             (account_id, limit),
         )

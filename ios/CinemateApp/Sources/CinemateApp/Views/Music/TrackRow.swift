@@ -5,6 +5,7 @@ struct TrackRow: View {
     @EnvironmentObject var apiClient: APIClient
     @Environment(\.accountId) private var accountId
     let track: MusicTrack
+    var showTrackNumber: Bool = true
     let onTap: () -> Void
     var onGoToArtist: ((String) -> Void)? = nil
     var onGoToAlbum: ((Int) -> Void)? = nil
@@ -12,6 +13,9 @@ struct TrackRow: View {
     @ObservedObject var downloadManager = DownloadManager.shared
     @State private var isFavorite: Bool = false
     @State private var showPlaylistPicker = false
+    @State private var showToast = false
+    @State private var toastIcon = ""
+    @State private var toastMessage = ""
 
     private var isCurrentTrack: Bool {
         audioPlayer.currentTrack?.id == track.id
@@ -23,17 +27,19 @@ struct TrackRow: View {
             onTap()
         }) {
             HStack(spacing: 14) {
-                ZStack {
-                    if isCurrentTrack {
-                        NowPlayingIndicator(isAnimating: audioPlayer.isPlaying)
-                            .frame(width: 24, height: 16)
-                    } else if let num = track.trackNumber {
-                        Text("\(num)")
-                            .font(.system(size: 14, weight: .medium, design: .monospaced))
-                            .foregroundStyle(Theme.textTertiary)
+                if showTrackNumber || isCurrentTrack {
+                    ZStack {
+                        if isCurrentTrack {
+                            NowPlayingIndicator(isAnimating: audioPlayer.isPlaying)
+                                .frame(width: 24, height: 16)
+                        } else if let num = track.trackNumber {
+                            Text("\(num)")
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Theme.textTertiary)
+                        }
                     }
+                    .frame(width: 24)
                 }
-                .frame(width: 24)
 
                 CachedAsyncImage(url: track.albumId.flatMap { apiClient.albumArtURL(albumId: $0) }) {
                     AlbumArtPlaceholder(size: 44)
@@ -59,6 +65,12 @@ struct TrackRow: View {
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(Theme.textTertiary)
 
+                if trackDownloadStatus == .completed {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.success)
+                }
+
                 if isFavorite {
                     Image(systemName: "heart.fill")
                         .font(.system(size: 11))
@@ -69,6 +81,10 @@ struct TrackRow: View {
                     Button(action: {
                         isFavorite.toggle()
                         hapticImpact(.medium)
+                        showFeedback(
+                            icon: isFavorite ? "heart.fill" : "heart.slash",
+                            message: isFavorite ? "Added to Favorites" : "Removed from Favorites"
+                        )
                         Task {
                             try? await apiClient.toggleMusicFavorite(accountId: accountId, trackId: track.id)
                         }
@@ -122,6 +138,13 @@ struct TrackRow: View {
         .sheet(isPresented: $showPlaylistPicker) {
             PlaylistPickerSheet(trackId: track.id)
         }
+        .toast(isPresented: $showToast, icon: toastIcon, message: toastMessage, edge: .top)
+    }
+
+    private func showFeedback(icon: String, message: String) {
+        toastIcon = icon
+        toastMessage = message
+        withAnimation { showToast = true }
     }
 
     private var trackDownloadStatus: DownloadStatus? {
@@ -136,10 +159,11 @@ struct TrackRow: View {
             contentId: track.id,
             title: track.title,
             subtitle: track.artist,
-            thumbnailPath: track.artworkURL,
+            thumbnailPath: track.albumId.map { "/api/music/albums/\($0)/art" },
             fileSize: 0,
             downloadPath: "/api/music/stream/\(track.id)"
         )
+        showFeedback(icon: "arrow.down.circle", message: "Downloading \(track.title)")
     }
 }
 

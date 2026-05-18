@@ -9,6 +9,9 @@ struct BookDetailView: View {
     @State private var isFavorite: Bool
     @State private var showReader = false
     @State private var descriptionExpanded = false
+    @State private var showToast = false
+    @State private var toastIcon = ""
+    @State private var toastMessage = ""
 
     init(book: Book, account: Account) {
         self.book = book
@@ -101,6 +104,10 @@ struct BookDetailView: View {
                         Button(action: {
                             isFavorite.toggle()
                             hapticImpact(.medium)
+                            showFeedback(
+                                icon: isFavorite ? "heart.fill" : "heart.slash",
+                                message: isFavorite ? "Added to Favorites" : "Removed from Favorites"
+                            )
                             Task {
                                 try? await apiClient.toggleBookFavorite(
                                     accountId: Int(account.id) ?? 0,
@@ -191,6 +198,7 @@ struct BookDetailView: View {
             BookReaderView(book: book, account: account)
         }
         #endif
+        .toast(isPresented: $showToast, icon: toastIcon, message: toastMessage, edge: .top)
     }
 
     private var bookDownloadStatus: DownloadStatus? {
@@ -218,6 +226,13 @@ struct BookDetailView: View {
             fileSize: book.fileSize,
             downloadPath: "/api/books/read/\(book.id)"
         )
+        showFeedback(icon: "arrow.down.circle", message: "Downloading \(book.title)")
+    }
+
+    private func showFeedback(icon: String, message: String) {
+        toastIcon = icon
+        toastMessage = message
+        withAnimation { showToast = true }
     }
 
     private var statusColor: Color {

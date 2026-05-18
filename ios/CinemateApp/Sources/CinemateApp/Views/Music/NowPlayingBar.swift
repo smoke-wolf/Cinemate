@@ -47,6 +47,7 @@ struct NowPlayingBar: View {
                         // Controls
                         HStack(spacing: 20) {
                             Button(action: {
+                                hapticImpact(.medium)
                                 audioPlayer.togglePlayPause()
                             }) {
                                 Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
@@ -55,6 +56,7 @@ struct NowPlayingBar: View {
                             }
 
                             Button(action: {
+                                hapticImpact(.medium)
                                 audioPlayer.next()
                             }) {
                                 Image(systemName: "forward.fill")

@@ -137,9 +137,17 @@ final class AudioPlayer: ObservableObject {
             self.albumArtURL = nil
         }
 
-        guard let streamURL = track.streamURL,
-              let url = URL(string: "\(effectiveBase)\(streamURL)") else {
-            return
+        // Check for locally downloaded file first
+        let downloadManager = DownloadManager.shared
+        let url: URL
+        if let localURL = downloadManager.localFileURL(contentType: .musicTrack, contentId: track.id) {
+            url = localURL
+        } else {
+            guard let streamURL = track.streamURL,
+                  let remoteURL = URL(string: "\(effectiveBase)\(streamURL)") else {
+                return
+            }
+            url = remoteURL
         }
 
         // Clean up previous
@@ -170,6 +178,126 @@ final class AudioPlayer: ObservableObject {
         updateNowPlayingInfo()
         fetchLyrics(baseURL: effectiveBase)
         onTrackPlayed?(track)
+
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleTrackEnd()
+            }
+        }
+    }
+
+    func playDownloadedTrack(record: DownloadRecord) {
+        guard let localURL = DownloadManager.shared.localFileURL(contentType: record.contentType, contentId: record.contentId) else { return }
+
+        let track = MusicTrack(
+            id: record.contentId,
+            title: record.title,
+            artist: record.subtitle ?? "Unknown Artist",
+            albumTitle: nil,
+            albumId: nil,
+            trackNumber: nil,
+            duration: 0,
+            isFavorite: false,
+            playCount: 0
+        )
+
+        self.currentTrack = track
+        self.duration = 0
+        self.queue = []
+        self.originalQueue = []
+        self.currentIndex = 0
+        self.albumArtURL = nil
+
+        // Clean up previous
+        removeTimeObserver()
+        statusObserver?.invalidate()
+
+        let playerItem = AVPlayerItem(url: localURL)
+        if player == nil {
+            player = AVPlayer(playerItem: playerItem)
+            player?.volume = volume
+        } else {
+            player?.replaceCurrentItem(with: playerItem)
+        }
+
+        statusObserver = playerItem.observe(\.status) { [weak self] item, _ in
+            Task { @MainActor in
+                if item.status == .readyToPlay {
+                    self?.player?.play()
+                    self?.isPlaying = true
+                    if let dur = item.asset.duration.seconds.isNaN ? nil : item.asset.duration.seconds {
+                        self?.duration = dur
+                    }
+                }
+            }
+        }
+
+        addTimeObserver()
+        updateNowPlayingInfo()
+
+        NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleTrackEnd()
+            }
+        }
+    }
+
+    func playLocalFile(url: URL, title: String, artist: String) {
+        let track = MusicTrack(
+            id: 0,
+            title: title,
+            artist: artist,
+            albumTitle: nil,
+            albumId: nil,
+            trackNumber: nil,
+            duration: 0,
+            isFavorite: false,
+            playCount: 0
+        )
+
+        self.currentTrack = track
+        self.duration = 0
+        self.queue = []
+        self.originalQueue = []
+        self.currentIndex = 0
+        self.albumArtURL = nil
+
+        // Clean up previous
+        removeTimeObserver()
+        statusObserver?.invalidate()
+
+        let playerItem = AVPlayerItem(url: url)
+        if player == nil {
+            player = AVPlayer(playerItem: playerItem)
+            player?.volume = volume
+        } else {
+            player?.replaceCurrentItem(with: playerItem)
+        }
+
+        statusObserver = playerItem.observe(\.status) { [weak self] item, _ in
+            Task { @MainActor in
+                if item.status == .readyToPlay {
+                    self?.player?.play()
+                    self?.isPlaying = true
+                    if let dur = item.asset.duration.seconds.isNaN ? nil : item.asset.duration.seconds {
+                        self?.duration = dur
+                    }
+                }
+            }
+        }
+
+        addTimeObserver()
+        updateNowPlayingInfo()
 
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
         NotificationCenter.default.addObserver(
