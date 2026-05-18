@@ -12,11 +12,11 @@ import { hashPin } from '../utils/pin';
 
 const db = window.electronAPI?.db;
 
-// ─── Accounts ───
+// --- Accounts ---
 
 export async function getAccounts(): Promise<Account[]> {
   if (!db) return [];
-  return (await db.query('SELECT * FROM accounts ORDER BY name')) as Account[];
+  return (await db.getAccounts()) as Account[];
 }
 
 export async function createAccount(data: {
@@ -25,10 +25,8 @@ export async function createAccount(data: {
   pin?: string;
 }): Promise<Account> {
   if (!db) throw new Error('No database available');
-  const result = await db.run(
-    'INSERT INTO accounts (name, avatar_color, pin) VALUES (?, ?, ?)',
-    [data.name, data.avatar_color, data.pin || null]
-  );
+  const pinHash = data.pin ? await hashPin(data.pin) : null;
+  const result = await db.createAccount(data.name, data.avatar_color, pinHash);
   return {
     id: result.lastInsertRowid,
     name: data.name,
@@ -39,65 +37,57 @@ export async function createAccount(data: {
 
 export async function verifyPin(accountId: number, pin: string): Promise<boolean> {
   if (!db) return false;
-  const rows = (await db.query(
-    'SELECT pin FROM accounts WHERE id = ?',
-    [accountId]
-  )) as { pin: string | null }[];
+  const rows = (await db.getAccountPin(accountId)) as { pin: string | null }[];
   if (rows.length === 0) return false;
   const hashedInput = await hashPin(pin);
   return rows[0].pin === hashedInput;
 }
 
-// ─── Movies ───
+// --- Movies ---
 
 export async function getMovies(): Promise<Movie[]> {
   if (!db) return [];
-  return (await db.query('SELECT * FROM movies ORDER BY date_added DESC')) as Movie[];
+  return (await db.getMovies()) as Movie[];
 }
 
 export async function getMovie(id: number): Promise<Movie | null> {
   if (!db) return null;
-  const rows = (await db.query('SELECT * FROM movies WHERE id = ?', [id])) as Movie[];
+  const rows = (await db.getMovie(id)) as Movie[];
   return rows[0] || null;
 }
 
 export async function addMovie(movie: Omit<Movie, 'id'>): Promise<number> {
   if (!db) return 0;
-  const result = await db.run(
-    `INSERT INTO movies (title, year, genre, description, rating, quality, format, duration, file_size, file_path, thumbnail_path)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      movie.title, movie.year || null, movie.genre || null, movie.description || null,
-      movie.rating || null, movie.quality || null, movie.format || null,
-      movie.duration || null, movie.file_size || null, movie.file_path,
-      movie.thumbnail_path || null,
-    ]
-  );
+  const result = await db.addMovie({
+    title: movie.title,
+    year: movie.year || null,
+    genre: movie.genre || null,
+    description: movie.description || null,
+    rating: movie.rating || null,
+    quality: movie.quality || null,
+    format: movie.format || null,
+    duration: movie.duration || null,
+    file_size: movie.file_size || null,
+    file_path: movie.file_path,
+    thumbnail_path: movie.thumbnail_path || null,
+  });
   return result.lastInsertRowid;
 }
 
-// ─── TV Shows ───
+// --- TV Shows ---
 
 export async function getTVShows(): Promise<TVShow[]> {
   if (!db) return [];
-  const shows = (await db.query(`
-    SELECT s.*,
-      (SELECT COUNT(*) FROM tv_episodes WHERE show_id = s.id) as episode_count
-    FROM tv_shows s ORDER BY name
-  `)) as TVShow[];
-  return shows;
+  return (await db.getTVShows()) as TVShow[];
 }
 
 export async function getTVShowWithSeasons(id: number): Promise<TVShow | null> {
   if (!db) return null;
-  const shows = (await db.query('SELECT * FROM tv_shows WHERE id = ?', [id])) as TVShow[];
+  const shows = (await db.getTVShow(id)) as TVShow[];
   if (shows.length === 0) return null;
   const show = shows[0];
 
-  const episodes = (await db.query(
-    'SELECT * FROM tv_episodes WHERE show_id = ? ORDER BY season, episode',
-    [id]
-  )) as any[];
+  const episodes = (await db.getTVEpisodes(id)) as any[];
 
   const seasonMap = new Map<number, any[]>();
   for (const ep of episodes) {
@@ -113,18 +103,11 @@ export async function getTVShowWithSeasons(id: number): Promise<TVShow | null> {
   return show;
 }
 
-// ─── Watch History ───
+// --- Watch History ---
 
 export async function getWatchHistory(accountId: number): Promise<WatchHistory[]> {
   if (!db) return [];
-  const rows = (await db.query(
-    `SELECT wh.*, m.title, m.thumbnail_path, m.year, m.quality, m.genre, m.file_path, m.duration, m.file_size, m.format, m.description, m.rating, m.date_added
-     FROM watch_history wh
-     LEFT JOIN movies m ON wh.movie_id = m.id
-     WHERE wh.account_id = ?
-     ORDER BY wh.last_watched DESC`,
-    [accountId]
-  )) as any[];
+  const rows = (await db.getWatchHistory(accountId)) as any[];
 
   return rows.map((r: any) => ({
     id: r.id,
@@ -161,36 +144,20 @@ export async function updateProgress(
   completed: boolean
 ): Promise<void> {
   if (!db) return;
-  const existing = (await db.query(
-    'SELECT id FROM watch_history WHERE account_id = ? AND movie_id = ?',
-    [accountId, movieId]
-  )) as any[];
+  const existing = (await db.findWatchHistory(accountId, movieId)) as any[];
 
   if (existing.length > 0) {
-    await db.run(
-      'UPDATE watch_history SET progress = ?, completed = ?, last_watched = CURRENT_TIMESTAMP WHERE id = ?',
-      [progress, completed ? 1 : 0, existing[0].id]
-    );
+    await db.updateWatchProgress(progress, completed ? 1 : 0, existing[0].id);
   } else {
-    await db.run(
-      'INSERT INTO watch_history (account_id, movie_id, progress, completed) VALUES (?, ?, ?, ?)',
-      [accountId, movieId, progress, completed ? 1 : 0]
-    );
+    await db.insertWatchHistory(accountId, movieId, progress, completed ? 1 : 0);
   }
 }
 
-// ─── Favorites ───
+// --- Favorites ---
 
 export async function getFavorites(accountId: number): Promise<Favorite[]> {
   if (!db) return [];
-  const rows = (await db.query(
-    `SELECT f.*, m.title, m.thumbnail_path, m.year, m.quality, m.genre, m.file_path, m.duration, m.file_size, m.format, m.description, m.rating, m.date_added
-     FROM favorites f
-     LEFT JOIN movies m ON f.movie_id = m.id
-     WHERE f.account_id = ?
-     ORDER BY f.added_at DESC`,
-    [accountId]
-  )) as any[];
+  const rows = (await db.getFavorites(accountId)) as any[];
 
   return rows.map((r: any) => ({
     id: r.id,
@@ -223,44 +190,28 @@ export async function toggleFavorite(
   movieId: number
 ): Promise<boolean> {
   if (!db) return false;
-  const existing = (await db.query(
-    'SELECT id FROM favorites WHERE account_id = ? AND movie_id = ?',
-    [accountId, movieId]
-  )) as any[];
+  const existing = (await db.findFavorite(accountId, movieId)) as any[];
 
   if (existing.length > 0) {
-    await db.run('DELETE FROM favorites WHERE id = ?', [existing[0].id]);
+    await db.deleteFavorite(existing[0].id);
     return false;
   } else {
-    await db.run(
-      'INSERT INTO favorites (account_id, movie_id) VALUES (?, ?)',
-      [accountId, movieId]
-    );
+    await db.insertFavorite(accountId, movieId);
     return true;
   }
 }
 
 export async function isFavorite(accountId: number, movieId: number): Promise<boolean> {
   if (!db) return false;
-  const rows = (await db.query(
-    'SELECT id FROM favorites WHERE account_id = ? AND movie_id = ?',
-    [accountId, movieId]
-  )) as any[];
+  const rows = (await db.findFavorite(accountId, movieId)) as any[];
   return rows.length > 0;
 }
 
-// ─── Timestamp Comments ───
+// --- Timestamp Comments ---
 
 export async function getComments(movieId: number): Promise<TimestampComment[]> {
   if (!db) return [];
-  return (await db.query(
-    `SELECT tc.*, a.name as account_name
-     FROM timestamp_comments tc
-     LEFT JOIN accounts a ON tc.account_id = a.id
-     WHERE tc.movie_id = ?
-     ORDER BY tc.timestamp_sec`,
-    [movieId]
-  )) as TimestampComment[];
+  return (await db.getComments(movieId)) as TimestampComment[];
 }
 
 export async function addComment(
@@ -270,10 +221,7 @@ export async function addComment(
   comment: string
 ): Promise<TimestampComment> {
   if (!db) throw new Error('No database');
-  const result = await db.run(
-    'INSERT INTO timestamp_comments (account_id, movie_id, timestamp_sec, comment) VALUES (?, ?, ?, ?)',
-    [accountId, movieId, timestampSec, comment]
-  );
+  const result = await db.addComment(accountId, movieId, timestampSec, comment);
   return {
     id: result.lastInsertRowid,
     account_id: accountId,
@@ -284,7 +232,7 @@ export async function addComment(
   };
 }
 
-// ─── Stats ───
+// --- Stats ---
 
 export async function getStats(accountId: number): Promise<LibraryStats> {
   if (!db) {
@@ -302,54 +250,16 @@ export async function getStats(accountId: number): Promise<LibraryStats> {
     };
   }
 
-  const movieCount = (await db.query('SELECT COUNT(*) as count FROM movies')) as any[];
-  const showCount = (await db.query('SELECT COUNT(*) as count FROM tv_shows')) as any[];
-  const watchedCount = (await db.query(
-    'SELECT COUNT(*) as count FROM watch_history WHERE account_id = ? AND completed = 1',
-    [accountId]
-  )) as any[];
-
-  const totalTime = (await db.query(
-    `SELECT COALESCE(SUM(m.duration * wh.progress), 0) as total
-     FROM watch_history wh
-     JOIN movies m ON wh.movie_id = m.id
-     WHERE wh.account_id = ?`,
-    [accountId]
-  )) as any[];
-
-  const avgRating = (await db.query(
-    'SELECT COALESCE(AVG(rating), 0) as avg FROM ratings WHERE account_id = ?',
-    [accountId]
-  )) as any[];
-
-  const genres = (await db.query(
-    `SELECT genre, COUNT(*) as count,
-     (SELECT COUNT(*) FROM watch_history wh JOIN movies m2 ON wh.movie_id = m2.id WHERE wh.account_id = ? AND m2.genre = movies.genre AND wh.completed = 1) as watched
-     FROM movies WHERE genre IS NOT NULL GROUP BY genre ORDER BY count DESC`,
-    [accountId]
-  )) as any[];
-
-  const qualities = (await db.query(
-    'SELECT quality, COUNT(*) as count FROM movies WHERE quality IS NOT NULL GROUP BY quality'
-  )) as any[];
-
-  const topRated = (await db.query(
-    `SELECT m.*, r.rating as user_rating
-     FROM ratings r JOIN movies m ON r.movie_id = m.id
-     WHERE r.account_id = ?
-     ORDER BY r.rating DESC LIMIT 10`,
-    [accountId]
-  )) as any[];
-
+  const movieCount = (await db.getMovieCount()) as any[];
+  const showCount = (await db.getShowCount()) as any[];
+  const watchedCount = (await db.getWatchedCount(accountId)) as any[];
+  const totalTime = (await db.getTotalWatchTime(accountId)) as any[];
+  const avgRating = (await db.getAvgRating(accountId)) as any[];
+  const genres = (await db.getGenreBreakdown(accountId)) as any[];
+  const qualities = (await db.getQualityDistribution()) as any[];
+  const topRated = (await db.getTopRated(accountId)) as any[];
   const recentlyWatched = await getWatchHistory(accountId);
-
-  const favGenres = (await db.query(
-    `SELECT m.genre, COUNT(*) as cnt
-     FROM favorites f JOIN movies m ON f.movie_id = m.id
-     WHERE f.account_id = ? AND m.genre IS NOT NULL
-     GROUP BY m.genre ORDER BY cnt DESC LIMIT 3`,
-    [accountId]
-  )) as any[];
+  const favGenres = (await db.getFavoriteGenres(accountId)) as any[];
 
   return {
     movie_count: movieCount[0]?.count || 0,
@@ -372,15 +282,10 @@ export async function getStats(accountId: number): Promise<LibraryStats> {
   };
 }
 
-// ─── Scan folder (stub for offline mode) ───
+// --- Scan folder ---
 
 export async function scanFolder(folderPath: string): Promise<number> {
-  // In offline mode, we just record the folder. Actual file scanning
-  // would require fs access through IPC. This is a simplified version.
   if (!db) return 0;
-  await db.run(
-    'INSERT OR REPLACE INTO scan_folders (path, last_scanned) VALUES (?, CURRENT_TIMESTAMP)',
-    [folderPath]
-  );
+  await db.upsertScanFolder(folderPath);
   return 0;
 }

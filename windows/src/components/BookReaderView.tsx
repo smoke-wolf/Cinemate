@@ -598,10 +598,10 @@ function EPUBReader({ book, onClose }: { book: BookItem; onClose: () => void }) 
           <iframe
             ref={iframeRef}
             src={chapterUrl}
+            sandbox="allow-same-origin"
             className="w-full h-full border-none"
             onLoad={() => {
               setLoading(false);
-              // Apply styles after load
               try {
                 const doc = iframeRef.current?.contentDocument;
                 if (doc && doc.body) {

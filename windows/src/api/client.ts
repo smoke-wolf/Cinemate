@@ -105,10 +105,20 @@ class CinemateAPI {
     });
   }
 
-  async verifyPin(_accountId: number, _pin: string): Promise<boolean> {
-    // Server does not expose a verify-pin endpoint; PIN verification is client-side
-    // The server stores pin_hash but has no dedicated verification route
-    return false;
+  async verifyPin(accountId: number, pin: string): Promise<boolean> {
+    try {
+      const data = await this.request<{ valid: boolean }>(
+        `/api/accounts/${accountId}/verify-pin`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ pin }),
+        }
+      );
+      return data.valid;
+    } catch {
+      // If server is unreachable or returns an error, fail closed
+      return false;
+    }
   }
 
   // ─── Movies ───

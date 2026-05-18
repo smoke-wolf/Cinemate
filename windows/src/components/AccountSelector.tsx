@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccounts } from '../hooks/useAccounts';
 import { api } from '../api/client';
-import { hashPin } from '../utils/pin';
 
 interface AccountSelectorProps {
   onSelect: () => void;
@@ -51,11 +50,8 @@ export default function AccountSelector({ onSelect }: AccountSelectorProps) {
   const handlePinSubmit = async () => {
     const account = accounts.find((a) => a.id === selectedAccountForPin);
     if (!account) return;
-    // Server does not expose a PIN verification endpoint;
-    // PIN check would need to be done via a dedicated server route.
-    // For now, attempt to proceed and let the server reject if needed.
-    const hashedInput = await hashPin(pinInput);
-    const valid = await api.verifyPin(account.id, hashedInput);
+    // Send raw PIN to server — server handles hashing and comparison
+    const valid = await api.verifyPin(account.id, pinInput);
     if (valid) {
       setCurrentAccount(account);
       setShowPin(false);
@@ -68,11 +64,11 @@ export default function AccountSelector({ onSelect }: AccountSelectorProps) {
 
   const handleCreateAccount = async () => {
     if (!newName.trim()) return;
-    const hashedNewPin = newPin ? await hashPin(newPin) : undefined;
+    // Send raw PIN to server — server handles hashing
     await createAccount({
       name: newName.trim(),
       avatar_color: newColor,
-      pin: hashedNewPin,
+      pin: newPin || undefined,
     });
     setNewName('');
     setNewPin('');
