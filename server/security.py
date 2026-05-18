@@ -94,10 +94,15 @@ def validate_scan_path(path: str) -> str:
 def safe_file_path(path: str, allowed_dirs: Optional[list[str]] = None) -> str:
     """Resolve a file path and verify it falls under an allowed directory.
 
+    When called without explicit allowed_dirs:
+      - Always blocks access to sensitive directories (.ssh, .aws, .gnupg, etc.)
+      - If media_dirs are configured in config, restricts to those + Cinemate data dirs
+      - If no media_dirs configured, allows paths under the user's home directory
+        (matching the scan path policy -- the DB stores paths from prior scans)
+
     Args:
         path: The file path to validate.
-        allowed_dirs: Optional explicit list. If None, uses get_allowed_media_dirs()
-                      plus configured media_dirs from the config.
+        allowed_dirs: Optional explicit list. If None, auto-determines from config.
 
     Returns:
         The resolved real path.
@@ -107,28 +112,53 @@ def safe_file_path(path: str, allowed_dirs: Optional[list[str]] = None) -> str:
         points to a sensitive location.
     """
     real = os.path.realpath(path)
+    home = os.path.realpath(str(Path.home()))
 
     # Always block access to sensitive directories regardless of config
-    home = os.path.realpath(str(Path.home()))
     if real.startswith(home + os.sep):
         rel = os.path.relpath(real, home)
         for forbidden in _FORBIDDEN_HOME_DIRS:
             if rel == forbidden or rel.startswith(forbidden + os.sep):
                 raise HTTPException(403, "Access denied")
 
-    if allowed_dirs is None:
-        allowed_dirs = get_allowed_media_dirs()
+    if allowed_dirs is not None:
+        # Explicit allowlist: strict containment check
+        for allowed in allowed_dirs:
+            resolved_allowed = os.path.realpath(allowed)
+            if real == resolved_allowed or real.startswith(resolved_allowed + os.sep):
+                return real
+        raise HTTPException(403, "Access denied")
 
-        # Also include configured media_dirs (the DB stores absolute paths from prior scans)
-        from database import load_config
-        cfg = load_config()
-        extra_media_dirs = cfg.get("media_dirs", [])
-        for d in extra_media_dirs:
-            rp = os.path.realpath(d)
-            if rp not in allowed_dirs:
-                allowed_dirs.append(rp)
+    # Auto-determine allowed dirs from config
+    from database import load_config
+    cfg = load_config()
+    media_dirs = cfg.get("media_dirs", [])
 
-    for allowed in allowed_dirs:
+    # Build the allowed list: Cinemate data dirs + configured media dirs
+    check_dirs = get_allowed_media_dirs()
+    for d in media_dirs:
+        rp = os.path.realpath(d)
+        if rp not in check_dirs:
+            check_dirs.append(rp)
+
+    # If media_dirs are configured, strictly enforce containment
+    if media_dirs:
+        for allowed in check_dirs:
+            resolved_allowed = os.path.realpath(allowed)
+            if real == resolved_allowed or real.startswith(resolved_allowed + os.sep):
+                return real
+        raise HTTPException(403, "Access denied")
+
+    # No media_dirs configured: allow anything under home (except forbidden dirs,
+    # already checked above). This matches the scan policy: if no media_dirs are
+    # set, scans are allowed under $HOME, so DB-sourced paths from those scans
+    # should be servable.
+    if real.startswith(home + os.sep) or real == home:
+        return real
+
+    # Also allow Cinemate data dirs (thumbnails, artwork, etc.) which may be
+    # outside home on some setups
+    for allowed in check_dirs:
         resolved_allowed = os.path.realpath(allowed)
         if real == resolved_allowed or real.startswith(resolved_allowed + os.sep):
             return real
