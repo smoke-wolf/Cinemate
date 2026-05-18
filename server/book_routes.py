@@ -448,6 +448,7 @@ async def read_epub_html(book_id: int, chapter: int = 0):
                 "X-Total-Chapters": str(len(html_items)),
                 "X-Current-Chapter": str(chapter),
                 "X-Book-Title": row["title"] or "",
+                "Content-Security-Policy": "script-src 'none'; style-src 'self' 'unsafe-inline'",
             },
         )
 
