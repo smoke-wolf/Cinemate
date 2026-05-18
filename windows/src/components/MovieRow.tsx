@@ -26,8 +26,6 @@ export default function MovieRow({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
-  if (movies.length === 0) return null;
-
   const checkScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -35,7 +33,6 @@ export default function MovieRow({
     setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
   };
 
-  // Check on mount
   useEffect(() => {
     checkScroll();
     const el = scrollRef.current;
@@ -45,6 +42,8 @@ export default function MovieRow({
       return () => observer.disconnect();
     }
   }, [movies.length]);
+
+  if (movies.length === 0) return null;
 
   const scroll = (direction: 'left' | 'right') => {
     const el = scrollRef.current;

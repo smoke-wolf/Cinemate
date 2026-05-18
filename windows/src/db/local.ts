@@ -8,6 +8,7 @@ import type {
   TimestampComment,
   LibraryStats,
 } from '../api/types';
+import { hashPin } from '../utils/pin';
 
 const db = window.electronAPI?.db;
 
@@ -43,7 +44,8 @@ export async function verifyPin(accountId: number, pin: string): Promise<boolean
     [accountId]
   )) as { pin: string | null }[];
   if (rows.length === 0) return false;
-  return rows[0].pin === pin;
+  const hashedInput = await hashPin(pin);
+  return rows[0].pin === hashedInput;
 }
 
 // ─── Movies ───

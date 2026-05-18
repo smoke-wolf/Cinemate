@@ -46,6 +46,7 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
 
   // Search
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const searchDebounce = useRef<ReturnType<typeof setTimeout>>();
 
   // Data
@@ -151,12 +152,10 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
 
   // Debounced search
   const handleSearch = (value: string) => {
-    setSearch(value);
+    setSearchInput(value);
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
     searchDebounce.current = setTimeout(() => {
-      if (subTab === 'tracks') loadTracks(value);
-      else if (subTab === 'artists') loadArtists(value);
-      else if (subTab === 'albums') loadAlbums(value);
+      setSearch(value);
     }, 300);
   };
 
@@ -269,7 +268,7 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
                 <input
                   type="text"
                   placeholder="Search..."
-                  value={search}
+                  value={searchInput}
                   onChange={(e) => handleSearch(e.target.value)}
                   className="bg-cinema-surface border border-cinema-border rounded-lg pl-9 pr-3 py-1.5
                              text-sm text-white placeholder:text-cinema-text-dim
@@ -335,7 +334,7 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
                       {genres.map((g, i) => (
                         <motion.button
                           key={g.genre}
-                          onClick={() => { setSubTab('tracks'); handleSearch(g.genre); setSearch(g.genre); }}
+                          onClick={() => { setSubTab('tracks'); setSearchInput(g.genre); setSearch(g.genre); }}
                           className="relative overflow-hidden rounded-xl p-4 text-left
                                      bg-cinema-surface hover:bg-cinema-card transition-all duration-200
                                      ring-1 ring-white/[0.04] hover:ring-white/[0.08] group"

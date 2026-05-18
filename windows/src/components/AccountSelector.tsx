@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccounts } from '../hooks/useAccounts';
+import { hashPin } from '../utils/pin';
 
 interface AccountSelectorProps {
   onSelect: () => void;
@@ -46,25 +47,27 @@ export default function AccountSelector({ onSelect }: AccountSelectorProps) {
     }
   };
 
-  const handlePinSubmit = () => {
+  const handlePinSubmit = async () => {
     const account = accounts.find((a) => a.id === selectedAccountForPin);
-    if (account && account.pin === pinInput) {
+    if (!account) return;
+    const hashedInput = await hashPin(pinInput);
+    if (account.pin === hashedInput) {
       setCurrentAccount(account);
       setShowPin(false);
       onSelect();
     } else {
       setPinError(true);
       setPinInput('');
-      // Shake animation is handled by the AnimatePresence key change
     }
   };
 
   const handleCreateAccount = async () => {
     if (!newName.trim()) return;
+    const hashedNewPin = newPin ? await hashPin(newPin) : undefined;
     await createAccount({
       name: newName.trim(),
       avatar_color: newColor,
-      pin: newPin || undefined,
+      pin: hashedNewPin,
     });
     setNewName('');
     setNewPin('');

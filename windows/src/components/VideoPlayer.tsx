@@ -69,6 +69,24 @@ export default function VideoPlayer({ movie, onClose, initialProgress }: VideoPl
     return () => video.removeEventListener('loadedmetadata', handleLoadedMetadata);
   }, [initialProgress]);
 
+  const currentTimeRef = useRef(currentTime);
+  const durationRef = useRef(duration);
+  currentTimeRef.current = currentTime;
+  durationRef.current = duration;
+
+  const saveProgress = useCallback(async () => {
+    if (!currentAccount || !durationRef.current) return;
+    const progress = currentTimeRef.current / durationRef.current;
+    const completed = progress > 0.9;
+    try {
+      if (isOnline) {
+        await api.updateProgress(currentAccount.id, movie.id, progress, completed);
+      } else {
+        await localDb.updateProgress(currentAccount.id, movie.id, progress, completed);
+      }
+    } catch {}
+  }, [currentAccount, movie.id, isOnline]);
+
   // Save progress periodically
   useEffect(() => {
     saveInterval.current = setInterval(() => {
@@ -78,20 +96,7 @@ export default function VideoPlayer({ movie, onClose, initialProgress }: VideoPl
       if (saveInterval.current) clearInterval(saveInterval.current);
       saveProgress();
     };
-  }, [currentTime, duration]);
-
-  const saveProgress = useCallback(async () => {
-    if (!currentAccount || !duration) return;
-    const progress = currentTime / duration;
-    const completed = progress > 0.9;
-    try {
-      if (isOnline) {
-        await api.updateProgress(currentAccount.id, movie.id, progress, completed);
-      } else {
-        await localDb.updateProgress(currentAccount.id, movie.id, progress, completed);
-      }
-    } catch {}
-  }, [currentAccount, movie.id, currentTime, duration, isOnline]);
+  }, [saveProgress]);
 
   // Auto-hide controls
   const resetHideTimer = useCallback(() => {
