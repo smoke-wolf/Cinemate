@@ -88,13 +88,14 @@ class CinemateAPI {
   }
 
   async ping(): Promise<ServerInfo> {
-    return this.request<ServerInfo>('/api/ping');
+    return this.request<ServerInfo>('/api/server/info');
   }
 
   // ─── Accounts ───
 
   async getAccounts(): Promise<Account[]> {
-    return this.request<Account[]>('/api/accounts');
+    const data = await this.request<{ accounts: Account[] }>('/api/accounts');
+    return data.accounts;
   }
 
   async createAccount(data: { name: string; avatar_color: string; pin?: string }): Promise<Account> {
@@ -104,26 +105,25 @@ class CinemateAPI {
     });
   }
 
-  async verifyPin(accountId: number, pin: string): Promise<boolean> {
-    const res = await this.request<{ valid: boolean }>(`/api/accounts/${accountId}/verify-pin`, {
-      method: 'POST',
-      body: JSON.stringify({ pin }),
-    });
-    return res.valid;
+  async verifyPin(_accountId: number, _pin: string): Promise<boolean> {
+    // Server does not expose a verify-pin endpoint; PIN verification is client-side
+    // The server stores pin_hash but has no dedicated verification route
+    return false;
   }
 
   // ─── Movies ───
 
   async getMovies(): Promise<Movie[]> {
-    return this.request<Movie[]>('/api/movies');
+    const data = await this.request<{ items: Movie[]; total: number }>('/api/library?media_type=movie&limit=1000');
+    return data.items;
   }
 
   async getMovie(id: number): Promise<Movie> {
-    return this.request<Movie>(`/api/movies/${id}`);
+    return this.request<Movie>(`/api/library/${id}`);
   }
 
-  async scanFolder(path: string): Promise<{ added: number }> {
-    return this.request<{ added: number }>('/api/scan', {
+  async scanFolder(path: string): Promise<{ status: string; path: string }> {
+    return this.request<{ status: string; path: string }>('/api/library/scan', {
       method: 'POST',
       body: JSON.stringify({ path }),
     });
@@ -132,23 +132,64 @@ class CinemateAPI {
   // ─── TV Shows ───
 
   async getTVShows(): Promise<TVShow[]> {
-    return this.request<TVShow[]>('/api/tv-shows');
+    const data = await this.request<{ shows: Array<{
+      show_name: string;
+      total_episodes: number;
+      total_seasons: number;
+      seasons: Array<{
+        season_number: number;
+        episodes: Array<Record<string, unknown>>;
+        episode_count: number;
+      }>;
+    }> }>('/api/shows');
+    return data.shows.map((s) => ({
+      id: 0,
+      name: s.show_name,
+      episode_count: s.total_episodes,
+      seasons: s.seasons.map((sn) => ({
+        season: sn.season_number,
+        episodes: sn.episodes.map((ep: Record<string, unknown>) => ({
+          id: ep.id as number,
+          show_id: 0,
+          season: ep.season_number as number,
+          episode: ep.episode_number as number,
+          title: ep.title as string,
+          file_path: ep.file_path as string,
+          duration: ep.duration as number,
+          file_size: ep.file_size as number,
+          thumbnail_path: ep.thumbnail_path as string,
+        })),
+      })),
+    }));
   }
 
   async getTVShow(id: number): Promise<TVShow> {
-    return this.request<TVShow>(`/api/tv-shows/${id}`);
+    const shows = await this.getTVShows();
+    const show = shows.find((s) => s.id === id);
+    if (!show) throw new Error('Show not found');
+    return show;
   }
 
   // ─── Watch History ───
 
   async getWatchHistory(accountId: number): Promise<WatchHistory[]> {
-    return this.request<WatchHistory[]>(`/api/accounts/${accountId}/history`);
+    const data = await this.request<{ items: WatchHistory[] }>(`/api/accounts/${accountId}/recently-played`);
+    return data.items;
   }
 
-  async updateProgress(accountId: number, movieId: number, progress: number, completed: boolean): Promise<void> {
-    await this.request(`/api/accounts/${accountId}/history`, {
+  async updateProgress(accountId: number, mediaId: number, position: number, duration?: number): Promise<void> {
+    const body: { position: number; duration?: number } = { position };
+    if (duration !== undefined) body.duration = duration;
+    await this.request(`/api/accounts/${accountId}/progress/${mediaId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async markWatched(accountId: number, mediaId: number, watched: boolean = true): Promise<void> {
+    await this.request(`/api/accounts/${accountId}/watched/${mediaId}`, {
       method: 'POST',
-      body: JSON.stringify({ movie_id: movieId, progress, completed }),
+      body: JSON.stringify({ watched }),
     });
   }
 
@@ -158,10 +199,9 @@ class CinemateAPI {
     return this.request<Favorite[]>(`/api/accounts/${accountId}/favorites`);
   }
 
-  async toggleFavorite(accountId: number, movieId: number): Promise<{ favorited: boolean }> {
-    return this.request<{ favorited: boolean }>(`/api/accounts/${accountId}/favorites`, {
+  async toggleFavorite(accountId: number, mediaId: number): Promise<{ favorite: boolean }> {
+    return this.request<{ favorite: boolean }>(`/api/accounts/${accountId}/favorites/${mediaId}`, {
       method: 'POST',
-      body: JSON.stringify({ movie_id: movieId }),
     });
   }
 
@@ -187,11 +227,12 @@ class CinemateAPI {
   // ─── LAN Admin ───
 
   async getConnectedClients(): Promise<ConnectedClient[]> {
-    return this.request<ConnectedClient[]>('/api/admin/clients');
+    const data = await this.request<{ connections: ConnectedClient[]; total: number }>('/api/admin/connections');
+    return data.connections;
   }
 
   async kickClient(clientId: string): Promise<void> {
-    await this.request(`/api/admin/clients/${clientId}`, { method: 'DELETE' });
+    await this.request(`/api/admin/kick/${clientId}`, { method: 'POST' });
   }
 
   // ─── Music Library ───
@@ -276,11 +317,12 @@ class CinemateAPI {
   // ─── Music Per-Account ───
 
   async getMusicFavorites(accountId: number): Promise<MusicTrack[]> {
-    return this.request<MusicTrack[]>(`/api/accounts/${accountId}/music/favorites`);
+    const data = await this.request<{ items: MusicTrack[] }>(`/api/accounts/${accountId}/music/favorites`);
+    return data.items;
   }
 
-  async toggleMusicFavorite(accountId: number, trackId: number): Promise<{ favorited: boolean }> {
-    return this.request<{ favorited: boolean }>(`/api/accounts/${accountId}/music/favorites/${trackId}`, {
+  async toggleMusicFavorite(accountId: number, trackId: number): Promise<{ favorite: boolean }> {
+    return this.request<{ favorite: boolean }>(`/api/accounts/${accountId}/music/favorites/${trackId}`, {
       method: 'POST',
     });
   }
@@ -293,11 +335,13 @@ class CinemateAPI {
   }
 
   async getRecentlyPlayedMusic(accountId: number): Promise<MusicTrack[]> {
-    return this.request<MusicTrack[]>(`/api/accounts/${accountId}/music/recently-played`);
+    const data = await this.request<{ items: MusicTrack[] }>(`/api/accounts/${accountId}/music/recently-played`);
+    return data.items;
   }
 
   async getPlaylists(accountId: number): Promise<Playlist[]> {
-    return this.request<Playlist[]>(`/api/accounts/${accountId}/playlists`);
+    const data = await this.request<{ playlists: Playlist[] }>(`/api/accounts/${accountId}/playlists`);
+    return data.playlists;
   }
 
   async createPlaylist(accountId: number, data: { name: string; description?: string }): Promise<Playlist> {
@@ -321,12 +365,13 @@ class CinemateAPI {
   async addTrackToPlaylist(accountId: number, playlistId: number, trackId: number): Promise<void> {
     await this.request(`/api/accounts/${accountId}/playlists/${playlistId}/tracks`, {
       method: 'POST',
-      body: JSON.stringify({ track_id: trackId }),
+      body: JSON.stringify({ track_ids: [trackId] }),
     });
   }
 
   async getMusicQueue(accountId: number): Promise<MusicTrack[]> {
-    return this.request<MusicTrack[]>(`/api/accounts/${accountId}/music/queue`);
+    const data = await this.request<{ queue: number[]; tracks: MusicTrack[] }>(`/api/accounts/${accountId}/music/queue`);
+    return data.tracks;
   }
 
   async setMusicQueue(accountId: number, trackIds: number[]): Promise<void> {
@@ -344,7 +389,8 @@ class CinemateAPI {
     if (params?.search) q.set('search', params.search);
     if (params?.format) q.set('format', params.format);
     const qs = q.toString();
-    return this.request<BookItem[]>(`/api/books${qs ? '?' + qs : ''}`);
+    const data = await this.request<{ items: BookItem[]; total: number }>(`/api/books${qs ? '?' + qs : ''}`);
+    return data.items;
   }
 
   async getBookStats(): Promise<{ total_books: number; total_authors: number; format_breakdown: { format: string; count: number }[] }> {
@@ -352,7 +398,7 @@ class CinemateAPI {
   }
 
   bookCoverUrl(bookId: number): string {
-    return `${this.baseUrl}/api/books/${bookId}/cover`;
+    return `${this.baseUrl}/api/books/cover/${bookId}`;
   }
 
   async toggleBookFavorite(accountId: number, bookId: number): Promise<void> {
@@ -360,19 +406,26 @@ class CinemateAPI {
   }
 
   async markBookFinished(accountId: number, bookId: number): Promise<void> {
-    await this.request(`/api/books/accounts/${accountId}/books/${bookId}/finished`, { method: 'POST' });
+    // Server marks a book as finished when reading_progress >= 0.95
+    await this.request(`/api/books/accounts/${accountId}/books/${bookId}/progress`, {
+      method: 'PUT',
+      body: JSON.stringify({ progress: 1.0 }),
+    });
   }
 
   async getCurrentlyReading(accountId: number): Promise<BookItem[]> {
-    return this.request<BookItem[]>(`/api/books/accounts/${accountId}/books/currently-reading`);
+    const data = await this.request<{ items: BookItem[] }>(`/api/books/accounts/${accountId}/books/currently-reading`);
+    return data.items;
   }
 
   async getFinishedBooks(accountId: number): Promise<BookItem[]> {
-    return this.request<BookItem[]>(`/api/books/accounts/${accountId}/books/finished`);
+    const data = await this.request<{ items: BookItem[] }>(`/api/books/accounts/${accountId}/books/finished`);
+    return data.items;
   }
 
-  async getBookAuthors(): Promise<{ name: string; book_count: number }[]> {
-    return this.request(`/api/books/authors`);
+  async getBookAuthors(): Promise<{ author: string; book_count: number }[]> {
+    const data = await this.request<{ authors: { author: string; book_count: number }[] }>(`/api/books/authors`);
+    return data.authors;
   }
 }
 

@@ -96,7 +96,7 @@ export default function LANAdmin() {
           <div>
             <div className="text-cinema-text-dim text-xs mb-1.5 uppercase tracking-wider font-medium">Server Name</div>
             <div className="text-white text-sm font-medium">
-              {connection.info?.name || 'N/A'}
+              {connection.info?.server_name || 'N/A'}
             </div>
           </div>
           <div>
@@ -175,20 +175,20 @@ export default function LANAdmin() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-white text-sm font-medium">{client.device_name}</span>
-                      <span className="text-cinema-text-dim text-xs font-mono tabular-nums">{client.ip}</span>
+                      <span className="text-white text-sm font-medium">{client.client_name}</span>
+                      <span className="text-cinema-text-dim text-xs font-mono tabular-nums">{client.client_ip}</span>
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
-                      {client.current_media && (
+                      {client.watching_title && (
                         <span className="text-cinema-gold text-xs flex items-center gap-1">
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z" />
                           </svg>
-                          {client.current_media}
+                          {client.watching_title}
                         </span>
                       )}
                       <span className="text-cinema-text-dim text-xs tabular-nums">
-                        Uptime: {formatUptime(client.uptime)}
+                        Connected: {client.connected_at || 'N/A'}
                       </span>
                     </div>
                   </div>

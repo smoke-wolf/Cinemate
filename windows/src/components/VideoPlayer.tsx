@@ -76,11 +76,13 @@ export default function VideoPlayer({ movie, onClose, initialProgress }: VideoPl
 
   const saveProgress = useCallback(async () => {
     if (!currentAccount || !durationRef.current) return;
-    const progress = currentTimeRef.current / durationRef.current;
+    const positionSec = currentTimeRef.current;
+    const durationSec = durationRef.current;
+    const progress = positionSec / durationSec;
     const completed = progress > 0.9;
     try {
       if (isOnline) {
-        await api.updateProgress(currentAccount.id, movie.id, progress, completed);
+        await api.updateProgress(currentAccount.id, movie.id, positionSec, durationSec);
       } else {
         await localDb.updateProgress(currentAccount.id, movie.id, progress, completed);
       }

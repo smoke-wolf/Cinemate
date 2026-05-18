@@ -177,7 +177,7 @@ export default function ServerConnect({ onConnect }: ServerConnectProps) {
                 transition={{ duration: 0.2 }}
               >
                 <PulsingDot color="bg-cinema-green" />
-                Connected to {connection.info?.name || 'server'}
+                Connected to {connection.info?.server_name || 'server'}
               </motion.p>
             )}
             {error && (

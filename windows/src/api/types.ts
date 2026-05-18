@@ -3,7 +3,7 @@ export interface Account {
   id: number;
   name: string;
   avatar_color: string;
-  pin?: string | null;
+  has_pin?: boolean;
   created_at?: string;
 }
 
@@ -101,19 +101,24 @@ export interface TimestampComment {
 
 // ─── Server ───
 export interface ServerInfo {
-  name: string;
-  url: string;
+  server_name: string;
   version?: string;
-  client_count?: number;
+  ip_address?: string;
+  port?: number;
+  connected_clients?: number;
+  wan_enabled?: boolean;
+  public_url?: string;
+  tunnel_type?: string;
 }
 
 export interface ConnectedClient {
   id: string;
-  ip: string;
-  device_name: string;
-  current_media?: string;
+  client_ip: string;
+  client_name: string;
+  watching_title?: string;
+  account_name?: string;
   connected_at: string;
-  uptime: number;
+  last_activity?: string;
 }
 
 // ─── Library Stats ───
@@ -188,7 +193,10 @@ export interface MusicStats {
   total_tracks: number;
   total_albums: number;
   total_artists: number;
-  total_duration: number;
+  total_duration_seconds: number;
+  total_duration_hours: number;
+  total_size_bytes: number;
+  total_size_gb: number;
   format_breakdown?: { format: string; count: number }[];
 }
 

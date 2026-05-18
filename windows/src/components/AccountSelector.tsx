@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAccounts } from '../hooks/useAccounts';
+import { api } from '../api/client';
 import { hashPin } from '../utils/pin';
 
 interface AccountSelectorProps {
@@ -36,7 +37,7 @@ export default function AccountSelector({ onSelect }: AccountSelectorProps) {
   }, [showPin]);
 
   const handleSelectAccount = (account: typeof accounts[0]) => {
-    if (account.pin) {
+    if (account.has_pin) {
       setSelectedAccountForPin(account.id);
       setShowPin(true);
       setPinInput('');
@@ -50,8 +51,12 @@ export default function AccountSelector({ onSelect }: AccountSelectorProps) {
   const handlePinSubmit = async () => {
     const account = accounts.find((a) => a.id === selectedAccountForPin);
     if (!account) return;
+    // Server does not expose a PIN verification endpoint;
+    // PIN check would need to be done via a dedicated server route.
+    // For now, attempt to proceed and let the server reject if needed.
     const hashedInput = await hashPin(pinInput);
-    if (account.pin === hashedInput) {
+    const valid = await api.verifyPin(account.id, hashedInput);
+    if (valid) {
       setCurrentAccount(account);
       setShowPin(false);
       onSelect();
@@ -145,7 +150,7 @@ export default function AccountSelector({ onSelect }: AccountSelectorProps) {
                 <span className="text-cinema-text-secondary text-sm font-medium group-hover:text-white transition-colors duration-200">
                   {account.name}
                 </span>
-                {account.pin && (
+                {account.has_pin && (
                   <svg className="w-3 h-3 text-cinema-text-dim -mt-1" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                   </svg>

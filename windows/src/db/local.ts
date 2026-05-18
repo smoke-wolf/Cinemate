@@ -33,7 +33,7 @@ export async function createAccount(data: {
     id: result.lastInsertRowid,
     name: data.name,
     avatar_color: data.avatar_color,
-    pin: data.pin,
+    has_pin: !!data.pin,
   };
 }
 

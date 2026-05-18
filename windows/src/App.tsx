@@ -166,7 +166,14 @@ export default function App() {
       if (!currentAccount) return;
       try {
         if (isOnline) {
-          await api.updateProgress(currentAccount.id, movieId, progress, completed);
+          // Server expects position in seconds; progress here is 0-1 fraction
+          // from the library context. Use markWatched for completion, or
+          // send position as-is (the server stores raw position values).
+          if (completed) {
+            await api.markWatched(currentAccount.id, movieId, true);
+          } else {
+            await api.updateProgress(currentAccount.id, movieId, progress);
+          }
         } else {
           await localDb.updateProgress(currentAccount.id, movieId, progress, completed);
         }

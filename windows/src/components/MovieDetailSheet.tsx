@@ -98,7 +98,7 @@ export default function MovieDetailSheet({
     setIsWatched(newState);
     try {
       if (isOnline) {
-        await api.updateProgress(currentAccount.id, movie.id, newState ? 1 : 0, newState);
+        await api.markWatched(currentAccount.id, movie.id, newState);
       } else {
         await localDb.updateProgress(currentAccount.id, movie.id, newState ? 1 : 0, newState);
       }
