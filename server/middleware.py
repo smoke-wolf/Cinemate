@@ -1,6 +1,6 @@
 """
 Security middleware for WAN mode — rate limiting, request logging, IP filtering,
-brute force protection.
+brute force protection, and WAN authentication enforcement.
 """
 
 import logging
@@ -14,6 +14,17 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 logger = logging.getLogger("cinemate.middleware")
+
+# ---------------------------------------------------------------------------
+# Paths exempt from WAN authentication
+# ---------------------------------------------------------------------------
+
+WAN_AUTH_EXEMPT_PATHS = {
+    "/health",
+    "/api/wan/admin/login",
+    "/api/wan/admin/setup",
+    "/api/wan/tunnel/status",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -152,10 +163,39 @@ brute_force = BruteForceTracker()
 request_logger = RequestLogger(enabled=True)
 
 
+def _is_wan_active() -> bool:
+    """Check if a WAN tunnel is currently connected."""
+    try:
+        from tunnel import tunnel_manager, TunnelState
+        return tunnel_manager.status.state == TunnelState.CONNECTED
+    except Exception:
+        return False
+
+
+async def _verify_bearer_token(request: Request) -> bool:
+    """Extract and verify a Bearer token from the Authorization header.
+
+    Returns True if the token is valid, False otherwise.
+    """
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return False
+    token = auth_header[7:]
+    if not token:
+        return False
+    try:
+        from auth import validate_session
+        await validate_session(token)
+        return True
+    except Exception:
+        return False
+
+
 class WANSecurityMiddleware(BaseHTTPMiddleware):
     """
     Security middleware for WAN-exposed endpoints.
 
+    - WAN authentication enforcement (Bearer token required when tunnel is active)
     - Rate limiting (per IP)
     - IP allowlist/blocklist
     - Brute force protection
@@ -190,14 +230,33 @@ class WANSecurityMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Rate limit exceeded"},
             )
 
-        # 4. Process request
+        # 4. WAN authentication enforcement
+        if _is_wan_active():
+            # Allow CORS preflight through
+            if method == "OPTIONS":
+                pass
+            # Allow exempt paths (login, setup, health, tunnel status)
+            elif path in WAN_AUTH_EXEMPT_PATHS:
+                pass
+            # Everything else requires a valid Bearer token
+            else:
+                if not await _verify_bearer_token(request):
+                    await request_logger.log(client_ip, path, method, 401)
+                    brute_force.record_failure(client_ip)
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Authentication required (WAN mode)"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+
+        # 5. Process request
         response = await call_next(request)
 
-        # 5. Track failures for brute force detection
+        # 6. Track failures for brute force detection
         if response.status_code in (401, 403):
             brute_force.record_failure(client_ip)
 
-        # 6. Log request
+        # 7. Log request
         await request_logger.log(client_ip, path, method, response.status_code)
 
         return response

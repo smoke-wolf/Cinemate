@@ -506,6 +506,7 @@ async def get_artist_image(name: str):
     import urllib.parse
 
     decoded_name = urllib.parse.unquote(name)
+    from security import safe_file_path
 
     db = await get_db()
     try:
@@ -519,7 +520,8 @@ async def get_artist_image(name: str):
             if not image_path.is_absolute():
                 image_path = ARTIST_IMG_DIR / image_path
             if image_path.is_file():
-                return FileResponse(str(image_path), media_type="image/jpeg")
+                validated = safe_file_path(str(image_path))
+                return FileResponse(validated, media_type="image/jpeg")
 
         # 2. Try downloading from remote image_url (Spotify CDN etc.)
         if row and row["image_url"]:
@@ -527,7 +529,8 @@ async def get_artist_image(name: str):
                 decoded_name, row["image_url"], db
             )
             if downloaded_path and downloaded_path.is_file():
-                return FileResponse(str(downloaded_path), media_type="image/jpeg")
+                validated = safe_file_path(str(downloaded_path))
+                return FileResponse(validated, media_type="image/jpeg")
 
         # 3. Fall back to album art from any album by this artist (DB art_path)
         cursor = await db.execute(
@@ -545,12 +548,14 @@ async def get_artist_image(name: str):
             if album_row["art_path"]:
                 art_path = Path(album_row["art_path"])
                 if art_path.is_file():
-                    return FileResponse(str(art_path), media_type="image/jpeg")
+                    validated = safe_file_path(str(art_path))
+                    return FileResponse(validated, media_type="image/jpeg")
             # 3b. Check ALBUM_ART_DIR/{album_id}.jpg directly (art_path may be NULL
             #     even though the file exists on disk)
             fallback_art = ALBUM_ART_DIR / f"{album_row['id']}.jpg"
             if fallback_art.is_file():
-                return FileResponse(str(fallback_art), media_type="image/jpeg")
+                validated = safe_file_path(str(fallback_art))
+                return FileResponse(validated, media_type="image/jpeg")
 
         # 4. Check ALL albums by this artist for art files on disk
         cursor = await db.execute(
@@ -563,7 +568,8 @@ async def get_artist_image(name: str):
         for album in all_albums:
             fallback_art = ALBUM_ART_DIR / f"{album['id']}.jpg"
             if fallback_art.is_file():
-                return FileResponse(str(fallback_art), media_type="image/jpeg")
+                validated = safe_file_path(str(fallback_art))
+                return FileResponse(validated, media_type="image/jpeg")
 
         raise HTTPException(404, "Artist image not found")
     finally:
@@ -742,8 +748,8 @@ async def list_genres():
 @router.post("/api/music/scan")
 async def start_music_scan(req: MusicScanRequest):
     """Trigger a music directory scan in the background."""
-    if not os.path.isdir(req.path):
-        raise HTTPException(400, f"Directory not found: {req.path}")
+    from security import validate_scan_path
+    path = validate_scan_path(req.path)
     if music_scan_state.scanning:
         raise HTTPException(409, "Music scan already in progress")
 
@@ -751,9 +757,9 @@ async def start_music_scan(req: MusicScanRequest):
     from main import ws_manager
 
     asyncio.create_task(
-        scan_music_directory(req.path, ws_broadcast=ws_manager.broadcast)
+        scan_music_directory(path, ws_broadcast=ws_manager.broadcast)
     )
-    return {"status": "music_scan_started", "path": req.path}
+    return {"status": "music_scan_started", "path": path}
 
 
 @router.get("/api/music/scan/status")
@@ -826,7 +832,10 @@ async def stream_audio(track_id: int, request: Request):
 
     file_path = row["file_path"]
     if not os.path.exists(file_path):
-        raise HTTPException(404, f"Audio file not found on disk: {file_path}")
+        raise HTTPException(404, "File not found")
+
+    from security import safe_file_path
+    file_path = safe_file_path(file_path)
 
     file_size = os.path.getsize(file_path)
     ext = Path(file_path).suffix.lower()
@@ -944,6 +953,8 @@ async def serve_album_art(album_id: int):
     if not art_path or not os.path.exists(art_path):
         raise HTTPException(404, "Album art not available")
 
+    from security import safe_file_path
+    art_path = safe_file_path(art_path)
     return FileResponse(art_path, media_type="image/jpeg")
 
 

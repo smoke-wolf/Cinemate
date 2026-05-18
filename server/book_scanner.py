@@ -57,9 +57,9 @@ def ensure_cover_dir():
 
 
 def find_book_files(root: str) -> list[str]:
-    """Recursively find all book files under root."""
+    """Recursively find all book files under root (does not follow symlinks)."""
     books = []
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
         for fname in filenames:
             if Path(fname).suffix.lower() in BOOK_EXTENSIONS:
                 books.append(os.path.join(dirpath, fname))

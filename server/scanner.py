@@ -208,9 +208,9 @@ def generate_thumbnail(filepath: str, media_id: int) -> Optional[str]:
 
 
 def find_video_files(root: str) -> list[str]:
-    """Recursively find all video files under root."""
+    """Recursively find all video files under root (does not follow symlinks)."""
     videos = []
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
         for fname in filenames:
             if Path(fname).suffix.lower() in VIDEO_EXTENSIONS:
                 videos.append(os.path.join(dirpath, fname))

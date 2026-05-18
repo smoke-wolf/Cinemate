@@ -193,9 +193,8 @@ async def list_genres():
 @router.post("/scan")
 async def start_book_scan(req: BookScanRequest):
     """Trigger a book directory scan in the background."""
-    path = req.path
-    if not os.path.isdir(path):
-        raise HTTPException(400, f"Directory not found: {path}")
+    from security import validate_scan_path
+    path = validate_scan_path(req.path)
     if book_scan_state.scanning:
         raise HTTPException(409, "Book scan already in progress")
 
@@ -260,6 +259,9 @@ async def get_book_cover(book_id: int):
     if not cover or not os.path.exists(cover):
         raise HTTPException(404, "Cover not available")
 
+    from security import safe_file_path
+    cover = safe_file_path(cover)
+
     ext = Path(cover).suffix.lower()
     media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
     media_type = media_types.get(ext, "image/jpeg")
@@ -282,7 +284,10 @@ async def read_book(book_id: int, request: Request):
 
     file_path = row["file_path"]
     if not os.path.exists(file_path):
-        raise HTTPException(404, f"File not found on disk: {file_path}")
+        raise HTTPException(404, "File not found")
+
+    from security import safe_file_path
+    file_path = safe_file_path(file_path)
 
     file_size = os.path.getsize(file_path)
     ext = Path(file_path).suffix.lower()
@@ -450,7 +455,7 @@ async def read_epub_html(book_id: int, chapter: int = 0):
         raise HTTPException(500, "ebooklib not installed on server")
     except Exception as e:
         logger.error(f"EPUB rendering failed for {book_id}: {e}")
-        raise HTTPException(500, f"Failed to render EPUB: {str(e)}")
+        raise HTTPException(500, "Failed to render EPUB")
 
 
 FRONT_MATTER_PATTERNS = re.compile(
@@ -581,7 +586,7 @@ async def epub_toc(book_id: int):
         }
     except Exception as e:
         logger.error(f"TOC extraction failed for book {book_id}: {e}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, "Failed to extract table of contents")
 
 
 @router.get("/{book_id}")

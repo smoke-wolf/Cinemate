@@ -59,9 +59,9 @@ music_scan_state = MusicScanState()
 
 
 def find_audio_files(root: str) -> list[str]:
-    """Recursively find all audio files under root."""
+    """Recursively find all audio files under root (does not follow symlinks)."""
     audio_files = []
-    for dirpath, _dirnames, filenames in os.walk(root):
+    for dirpath, _dirnames, filenames in os.walk(root, followlinks=False):
         for fname in filenames:
             if Path(fname).suffix.lower() in AUDIO_EXTENSIONS:
                 audio_files.append(os.path.join(dirpath, fname))

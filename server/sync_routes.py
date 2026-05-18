@@ -895,9 +895,13 @@ async def receive_upload(job_id: str, file: UploadFile = File(...)):
     finally:
         await db.close()
 
-    # Save to UPLOAD_DIR
+    # Save to UPLOAD_DIR with sanitized filename
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    dest = UPLOAD_DIR / f"{job_id}_{job['file_name']}"
+    safe_name = os.path.basename(job['file_name'])
+    dest = UPLOAD_DIR / f"{job_id}_{safe_name}"
+    # Verify the resolved dest stays within UPLOAD_DIR
+    if not os.path.realpath(str(dest)).startswith(os.path.realpath(str(UPLOAD_DIR)) + os.sep):
+        raise HTTPException(400, "Invalid file name")
     total_written = 0
     try:
         with open(dest, "wb") as f:
@@ -920,7 +924,8 @@ async def receive_upload(job_id: str, file: UploadFile = File(...)):
             await db.commit()
         finally:
             await db.close()
-        raise HTTPException(500, f"Upload failed: {e}")
+        logger.error(f"Upload failed for job {job_id}: {e}")
+        raise HTTPException(500, "Upload failed")
 
     # Update job with bytes written
     db = await get_db()
@@ -958,8 +963,9 @@ async def complete_upload(job_id: str, data: UploadComplete):
         if job["status"] != "uploaded":
             raise HTTPException(400, f"Upload job is '{job['status']}', expected 'uploaded'")
 
-        # Verify file exists on disk
-        dest = UPLOAD_DIR / f"{job_id}_{job['file_name']}"
+        # Verify file exists on disk (use sanitized filename)
+        safe_name = os.path.basename(job['file_name'])
+        dest = UPLOAD_DIR / f"{job_id}_{safe_name}"
         if not dest.exists():
             raise HTTPException(404, "Uploaded file not found on disk")
 

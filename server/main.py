@@ -218,6 +218,34 @@ class AccessRulesUpdate(BaseModel):
     require_pin: bool = False
 
 
+class PinVerify(BaseModel):
+    pin: str
+
+
+# ---------------------------------------------------------------------------
+# Rate limiter for PIN verification (brute-force protection)
+# ---------------------------------------------------------------------------
+_pin_attempts: dict[int, list[float]] = {}  # account_id -> list of attempt timestamps
+PIN_RATE_LIMIT = 5         # max attempts
+PIN_RATE_WINDOW = 60.0     # per this many seconds
+
+
+def _check_pin_rate_limit(account_id: int):
+    """Raise 429 if too many PIN attempts for this account."""
+    now = time.time()
+    attempts = _pin_attempts.get(account_id, [])
+    # Prune old attempts outside the window
+    attempts = [t for t in attempts if now - t < PIN_RATE_WINDOW]
+    _pin_attempts[account_id] = attempts
+    if len(attempts) >= PIN_RATE_LIMIT:
+        raise HTTPException(
+            429,
+            f"Too many PIN attempts. Try again in {int(PIN_RATE_WINDOW - (now - attempts[0]))} seconds.",
+        )
+    attempts.append(now)
+    _pin_attempts[account_id] = attempts
+
+
 # ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
@@ -268,9 +296,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Build CORS origins: localhost + LAN IP for development/LAN use.
+# When WAN is active, the WANSecurityMiddleware enforces auth on all requests,
+# so CORS is a secondary defense. Wildcard origin with credentials is invalid
+# per the spec, so we enumerate allowed origins instead.
+_cors_origins = [
+    "http://localhost:9876",
+    "http://localhost:3000",
+    "http://127.0.0.1:9876",
+    "http://127.0.0.1:3000",
+    f"http://{get_lan_ip()}:9876",
+]
+# If a tunnel is later started, its public URL should also be allowed.
+# The tunnel manager will add it dynamically via the wan config.
+_cfg = load_config()
+_wan_domain = _cfg.get("custom_domain_url")
+if _wan_domain:
+    _cors_origins.append(_wan_domain)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -394,9 +440,8 @@ async def list_library(
 @app.post("/api/library/scan")
 async def start_scan(req: ScanRequest):
     """Trigger a directory scan in the background."""
-    path = req.path
-    if not os.path.isdir(path):
-        raise HTTPException(400, f"Directory not found: {path}")
+    from security import validate_scan_path
+    path = validate_scan_path(req.path)
     if scan_state.scanning:
         raise HTTPException(409, "Scan already in progress")
 
@@ -684,6 +729,31 @@ async def delete_account(account_id: int):
         await db.close()
 
 
+@app.post("/api/accounts/{account_id}/verify-pin")
+async def verify_pin(account_id: int, data: PinVerify):
+    """Verify a PIN for an account. Rate-limited to prevent brute force."""
+    _check_pin_rate_limit(account_id)
+
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT pin_hash FROM accounts WHERE id = ?", (account_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            raise HTTPException(404, "Account not found")
+
+        stored_hash = row["pin_hash"]
+        if stored_hash is None:
+            # Account has no PIN — always valid
+            return {"valid": True}
+
+        input_hash = hash_pin(data.pin)
+        return {"valid": input_hash == stored_hash}
+    finally:
+        await db.close()
+
+
 # ===========================================================================
 # 3. PER-ACCOUNT ACTIONS
 # ===========================================================================
@@ -898,7 +968,10 @@ async def stream_video(media_id: int, request: Request):
 
     file_path = row["file_path"]
     if not os.path.exists(file_path):
-        raise HTTPException(404, f"File not found on disk: {file_path}")
+        raise HTTPException(404, "File not found")
+
+    from security import safe_file_path
+    file_path = safe_file_path(file_path)
 
     file_size = os.path.getsize(file_path)
     ext = Path(file_path).suffix.lower()
@@ -983,9 +1056,10 @@ async def get_thumbnail(media_id: int):
 
     thumb = row["thumbnail_path"]
     if not thumb or not os.path.exists(thumb):
-        # Return a placeholder or 404
         raise HTTPException(404, "Thumbnail not available")
 
+    from security import safe_file_path
+    thumb = safe_file_path(thumb)
     return FileResponse(thumb, media_type="image/jpeg")
 
 
@@ -1054,8 +1128,21 @@ async def update_server_settings(data: ServerSettingsUpdate, _admin: dict = Depe
 # ---------------------------------------------------------------------------
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = Query(None)):
     """WebSocket for real-time updates (scan progress, new media, etc.)."""
+    # When WAN is active, require a valid token query parameter
+    from middleware import _is_wan_active
+    if _is_wan_active():
+        if not token:
+            await websocket.close(code=4001, reason="Authentication required (WAN mode)")
+            return
+        try:
+            from auth import validate_session
+            await validate_session(token)
+        except Exception:
+            await websocket.close(code=4001, reason="Invalid or expired token")
+            return
+
     client_id = str(uuid.uuid4())[:8]
     client_ip = websocket.client.host if websocket.client else "unknown"
 
