@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAccounts } from '../hooks/useAccounts';
 import AlbumDetailView from './AlbumDetailView';
 import ArtistDetailView from './ArtistDetailView';
+import PlaylistView from './PlaylistView';
 
 type MusicSubTab = 'browse' | 'tracks' | 'artists' | 'albums' | 'playlists';
 type TrackSortKey = 'title' | 'artist' | 'album' | 'duration';
@@ -43,6 +44,7 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
   // Detail views
   const [detailAlbumId, setDetailAlbumId] = useState<number | null>(null);
   const [detailArtistName, setDetailArtistName] = useState<string | null>(null);
+  const [detailPlaylist, setDetailPlaylist] = useState<Playlist | null>(null);
 
   // Search
   const [search, setSearch] = useState('');
@@ -185,6 +187,17 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
       loadPlaylists();
     } catch {}
   };
+
+  // If showing playlist detail, render that instead
+  if (detailPlaylist !== null) {
+    return (
+      <PlaylistView
+        playlist={detailPlaylist}
+        onBack={() => { setDetailPlaylist(null); loadPlaylists(); }}
+        onPlayTrack={onPlayTrack}
+      />
+    );
+  }
 
   // If showing album or artist detail, render that instead
   if (detailAlbumId !== null) {
@@ -612,6 +625,7 @@ export default function MusicView({ onPlayTrack }: MusicViewProps) {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.04, duration: 0.25 }}
+                      onClick={() => setDetailPlaylist(pl)}
                     >
                       <div className="w-14 h-14 rounded-lg bg-cinema-card flex items-center justify-center
                                       ring-1 ring-white/[0.06]">

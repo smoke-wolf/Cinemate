@@ -33,7 +33,14 @@ import ProfileView from './components/ProfileView';
 import LANAdmin from './components/LANAdmin';
 import MusicView from './components/MusicView';
 import MusicPlayer from './components/MusicPlayer';
+import NowPlayingBar from './components/NowPlayingBar';
+import LyricsView from './components/LyricsView';
+import EqualizerView from './components/EqualizerView';
 import BooksView from './components/BooksView';
+import DownloadQueueView from './components/DownloadQueueView';
+import DevicesView from './components/DevicesView';
+import SettingsView from './components/SettingsView';
+import WANSettingsView from './components/WANSettingsView';
 
 export default function App() {
   // ─── Screen state ───
@@ -69,6 +76,9 @@ export default function App() {
   const [musicQueueIndex, setMusicQueueIndex] = useState(0);
   const [musicIsPlaying, setMusicIsPlaying] = useState(false);
   const [showMusicQueue, setShowMusicQueue] = useState(false);
+  const [showMusicLyrics, setShowMusicLyrics] = useState(false);
+  const [showMusicEqualizer, setShowMusicEqualizer] = useState(false);
+  const [showFullPlayer, setShowFullPlayer] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // ─── Data loading ───
@@ -274,6 +284,12 @@ export default function App() {
 
   const musicOnTimeUpdate = useCallback((_currentTime: number, _duration: number) => {
     // Placeholder for future use (scrobbling, etc.)
+  }, []);
+
+  const musicSeekTo = useCallback((time: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+    }
   }, []);
 
   // Load data when account is selected
@@ -568,11 +584,23 @@ export default function App() {
                       </div>
                     )}
 
+                    {/* Downloads tab */}
+                    {activeTab === 'downloads' && <DownloadQueueView />}
+
+                    {/* Devices tab */}
+                    {activeTab === 'devices' && <DevicesView />}
+
                     {/* Profile tab */}
                     {activeTab === 'profile' && <ProfileView />}
 
                     {/* LAN Admin tab */}
                     {activeTab === 'admin' && <LANAdmin />}
+
+                    {/* Settings tab */}
+                    {activeTab === 'settings' && <SettingsView />}
+
+                    {/* WAN Settings tab */}
+                    {activeTab === 'wan' && <WANSettingsView />}
                   </main>
                 </div>
               )}
@@ -612,9 +640,9 @@ export default function App() {
             {/* Hidden audio element for music playback */}
             <audio ref={audioRef} preload="auto" />
 
-            {/* Music player bar (global, fixed bottom) */}
+            {/* Music player bar (global, fixed bottom) — full player or compact NowPlayingBar */}
             <AnimatePresence>
-              {musicCurrentTrack && (
+              {musicCurrentTrack && showFullPlayer && (
                 <MusicPlayer
                   currentTrack={musicCurrentTrack}
                   queue={musicQueue}
@@ -628,9 +656,44 @@ export default function App() {
                   audioRef={audioRef}
                   showQueue={showMusicQueue}
                   onToggleQueue={() => setShowMusicQueue((v) => !v)}
+                  showLyrics={showMusicLyrics}
+                  onToggleLyrics={() => setShowMusicLyrics((v) => !v)}
+                  showEqualizer={showMusicEqualizer}
+                  onToggleEqualizer={() => setShowMusicEqualizer((v) => !v)}
                 />
               )}
             </AnimatePresence>
+
+            {/* Compact NowPlayingBar when not on the music tab or full player is collapsed */}
+            <AnimatePresence>
+              {musicCurrentTrack && !showFullPlayer && (
+                <NowPlayingBar
+                  currentTrack={musicCurrentTrack}
+                  isPlaying={musicIsPlaying}
+                  onPlayPause={musicTogglePlayPause}
+                  onNext={musicPlayNext}
+                  onPrev={musicPlayPrev}
+                  audioRef={audioRef}
+                  onExpandClick={() => setShowFullPlayer(true)}
+                />
+              )}
+            </AnimatePresence>
+
+            {/* Lyrics panel */}
+            <LyricsView
+              currentTrack={musicCurrentTrack}
+              audioRef={audioRef}
+              isVisible={showMusicLyrics && !!musicCurrentTrack}
+              onClose={() => setShowMusicLyrics(false)}
+              onSeek={musicSeekTo}
+            />
+
+            {/* Equalizer panel */}
+            <EqualizerView
+              audioRef={audioRef}
+              isVisible={showMusicEqualizer && !!musicCurrentTrack}
+              onClose={() => setShowMusicEqualizer(false)}
+            />
           </div>
         </LibraryContext.Provider>
       </AccountContext.Provider>

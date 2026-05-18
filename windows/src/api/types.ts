@@ -202,7 +202,7 @@ export interface MusicStats {
 
 // ─── App State ───
 export type AppScreen = 'splash' | 'server' | 'accounts' | 'main';
-export type MainTab = 'browse' | 'tvshows' | 'music' | 'books' | 'favorites' | 'recent' | 'profile' | 'admin';
+export type MainTab = 'browse' | 'tvshows' | 'music' | 'books' | 'favorites' | 'recent' | 'downloads' | 'devices' | 'profile' | 'admin' | 'settings' | 'wan';
 
 // ─── Books ───
 export interface BookItem {

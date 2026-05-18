@@ -30,6 +30,10 @@ interface MusicPlayerProps {
   audioRef: React.RefObject<HTMLAudioElement | null>;
   showQueue: boolean;
   onToggleQueue: () => void;
+  showLyrics?: boolean;
+  onToggleLyrics?: () => void;
+  showEqualizer?: boolean;
+  onToggleEqualizer?: () => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -51,6 +55,10 @@ export default function MusicPlayer({
   audioRef,
   showQueue,
   onToggleQueue,
+  showLyrics,
+  onToggleLyrics,
+  showEqualizer,
+  onToggleEqualizer,
 }: MusicPlayerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -342,12 +350,45 @@ export default function MusicPlayer({
             />
           </div>
 
+          {/* Lyrics toggle */}
+          {onToggleLyrics && (
+            <motion.button
+              onClick={onToggleLyrics}
+              className={`transition-colors duration-150 ${showLyrics ? 'text-cinema-gold' : 'text-cinema-text-secondary hover:text-white'}`}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              title="Lyrics"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+            </motion.button>
+          )}
+
+          {/* Equalizer toggle */}
+          {onToggleEqualizer && (
+            <motion.button
+              onClick={onToggleEqualizer}
+              className={`transition-colors duration-150 ${showEqualizer ? 'text-cinema-gold' : 'text-cinema-text-secondary hover:text-white'}`}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              title="Equalizer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+              </svg>
+            </motion.button>
+          )}
+
           {/* Queue toggle */}
           <motion.button
             onClick={onToggleQueue}
             className={`transition-colors duration-150 ${showQueue ? 'text-cinema-gold' : 'text-cinema-text-secondary hover:text-white'}`}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
+            title="Queue"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h10M4 18h7" />
