@@ -393,7 +393,7 @@ class CinemateAPI {
     return data.items;
   }
 
-  async getBookStats(): Promise<{ total_books: number; total_authors: number; format_breakdown: { format: string; count: number }[] }> {
+  async getBookStats(): Promise<{ total_books: number; total_authors: number; total_pages: number; format_breakdown: { format: string; count: number }[] }> {
     return this.request(`/api/books/stats`);
   }
 
@@ -426,6 +426,64 @@ class CinemateAPI {
   async getBookAuthors(): Promise<{ author: string; book_count: number }[]> {
     const data = await this.request<{ authors: { author: string; book_count: number }[] }>(`/api/books/authors`);
     return data.authors;
+  }
+
+  bookFileUrl(bookId: number): string {
+    return `${this.baseUrl}/api/books/read/${bookId}`;
+  }
+
+  bookEpubHtmlUrl(bookId: number, chapter: number = 0): string {
+    return `${this.baseUrl}/api/books/read/${bookId}/epub?chapter=${chapter}`;
+  }
+
+  async getEpubToc(bookId: number): Promise<{
+    book_id: number;
+    chapters: { index: number; title: string; is_front_matter?: boolean }[];
+    total: number;
+    first_content_index: number;
+  }> {
+    return this.request(`/api/books/read/${bookId}/toc`);
+  }
+
+  async updateBookProgress(accountId: number, bookId: number, progress: number, currentPage?: number): Promise<void> {
+    const body: { progress: number; current_page?: number } = { progress };
+    if (currentPage !== undefined) body.current_page = currentPage;
+    await this.request(`/api/books/accounts/${accountId}/books/${bookId}/progress`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getBookBookmarks(accountId: number, bookId: number): Promise<{ id: number; page: number; note: string | null; created_at?: string }[]> {
+    const data = await this.request<{ bookmarks: { id: number; page: number; note: string | null; created_at?: string }[] }>(
+      `/api/books/accounts/${accountId}/books/${bookId}/bookmarks`
+    );
+    return data.bookmarks;
+  }
+
+  async addBookBookmark(accountId: number, bookId: number, page: number, note?: string): Promise<void> {
+    await this.request(`/api/books/accounts/${accountId}/books/${bookId}/bookmarks`, {
+      method: 'POST',
+      body: JSON.stringify({ page, note: note || null }),
+    });
+  }
+
+  async deleteBookBookmark(accountId: number, bookId: number, bookmarkId: number): Promise<void> {
+    await this.request(`/api/books/accounts/${accountId}/books/${bookId}/bookmarks/${bookmarkId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getAccountBookStats(accountId: number): Promise<{
+    books_finished: number;
+    books_in_progress: number;
+    favorites_count: number;
+    total_reading_time_seconds: number;
+    total_reading_time_hours: number;
+    pages_read: number;
+    total_bookmarks: number;
+  }> {
+    return this.request(`/api/books/accounts/${accountId}/books/stats`);
   }
 }
 
