@@ -418,53 +418,61 @@ final class BookDatabase {
             .appendingPathComponent("Cinemate", isDirectory: true)
         try? FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
         let dbPath = dbDir.appendingPathComponent("library.db").path
-        db = try! Connection(dbPath)
+        do {
+            db = try Connection(dbPath)
+        } catch {
+            fatalError("Failed to open Cinemate book database at \(dbPath): \(error)")
+        }
         createTables()
     }
 
     private func createTables() {
-        try! db.run(booksTable.create(ifNotExists: true) { t in
-            t.column(colId, primaryKey: .autoincrement)
-            t.column(colTitle)
-            t.column(colAuthor)
-            t.column(colGenre)
-            t.column(colPublisher)
-            t.column(colLanguage)
-            t.column(colDescription)
-            t.column(colPageCount, defaultValue: 0)
-            t.column(colFormat)
-            t.column(colFilePath, unique: true)
-            t.column(colFileSize, defaultValue: 0)
-            t.column(colCoverPath)
-            t.column(colYear)
-            t.column(colDateAdded)
-        })
-        try? db.run(booksTable.createIndex(colTitle, ifNotExists: true))
-        try? db.run(booksTable.createIndex(colAuthor, ifNotExists: true))
-        try? db.run(booksTable.createIndex(colFormat, ifNotExists: true))
+        do {
+            try db.run(booksTable.create(ifNotExists: true) { t in
+                t.column(colId, primaryKey: .autoincrement)
+                t.column(colTitle)
+                t.column(colAuthor)
+                t.column(colGenre)
+                t.column(colPublisher)
+                t.column(colLanguage)
+                t.column(colDescription)
+                t.column(colPageCount, defaultValue: 0)
+                t.column(colFormat)
+                t.column(colFilePath, unique: true)
+                t.column(colFileSize, defaultValue: 0)
+                t.column(colCoverPath)
+                t.column(colYear)
+                t.column(colDateAdded)
+            })
+            try? db.run(booksTable.createIndex(colTitle, ifNotExists: true))
+            try? db.run(booksTable.createIndex(colAuthor, ifNotExists: true))
+            try? db.run(booksTable.createIndex(colFormat, ifNotExists: true))
 
-        try! db.run(bookAccountTable.create(ifNotExists: true) { t in
-            t.column(colBAAccountId)
-            t.column(colBABookId)
-            t.column(colBAProgress, defaultValue: 0)
-            t.column(colBACurrentPage, defaultValue: 0)
-            t.column(colBAFavorite, defaultValue: false)
-            t.column(colBAFinished, defaultValue: false)
-            t.column(colBAStartedAt)
-            t.column(colBAFinishedAt)
-            t.column(colBATotalReadingTime, defaultValue: 0)
-            t.primaryKey(colBAAccountId, colBABookId)
-        })
+            try db.run(bookAccountTable.create(ifNotExists: true) { t in
+                t.column(colBAAccountId)
+                t.column(colBABookId)
+                t.column(colBAProgress, defaultValue: 0)
+                t.column(colBACurrentPage, defaultValue: 0)
+                t.column(colBAFavorite, defaultValue: false)
+                t.column(colBAFinished, defaultValue: false)
+                t.column(colBAStartedAt)
+                t.column(colBAFinishedAt)
+                t.column(colBATotalReadingTime, defaultValue: 0)
+                t.primaryKey(colBAAccountId, colBABookId)
+            })
 
-        try! db.run(bookmarksTable.create(ifNotExists: true) { t in
-            t.column(colBMId, primaryKey: .autoincrement)
-            t.column(colBMAccountId)
-            t.column(colBMBookId)
-            t.column(colBMPage)
-            t.column(colBMNote)
-            t.column(colBMCreatedAt)
-        })
-        try? db.run(bookmarksTable.createIndex(colBMBookId, ifNotExists: true))
+            try db.run(bookmarksTable.create(ifNotExists: true) { t in
+                t.column(colBMId, primaryKey: .autoincrement)
+                t.column(colBMAccountId)
+                t.column(colBMBookId)
+                t.column(colBMPage)
+                t.column(colBMNote)
+                t.column(colBMCreatedAt)
+            })
+            try? db.run(bookmarksTable.createIndex(colBMBookId, ifNotExists: true))
+        } catch {
+            fatalError("Failed to create Cinemate book tables: \(error)")
+        }
     }
 
     // MARK: - Insert

@@ -146,11 +146,12 @@ struct AccountSelectorView: View {
             accounts = Database.shared.allAccounts()
             // If no accounts exist, auto-create a default one
             if accounts.isEmpty {
-                let defaultAccount = Database.shared.createAccount(
+                if let defaultAccount = Database.shared.createAccount(
                     name: "Default",
                     avatarColor: "#D4A017"
-                )
-                accounts = [defaultAccount]
+                ) {
+                    accounts = [defaultAccount]
+                }
             }
         }
     }
@@ -595,11 +596,11 @@ struct CreateAccountSheet: View {
                 Button("Create") {
                     guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
                     let pinValue = usePIN && pin.count == 4 ? pin : nil
-                    let account = Database.shared.createAccount(
+                    guard let account = Database.shared.createAccount(
                         name: name.trimmingCharacters(in: .whitespaces),
                         avatarColor: selectedColor,
                         pin: pinValue
-                    )
+                    ) else { return }
                     onCreated(account)
                 }
                 .font(.system(size: 14, weight: .semibold))

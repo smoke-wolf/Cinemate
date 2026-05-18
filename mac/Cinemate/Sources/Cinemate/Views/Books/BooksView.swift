@@ -216,7 +216,6 @@ struct BooksView: View {
 
     private var totalReadingTimeFormatted: String {
         let totalSeconds = viewModel.books.reduce(0.0) { $0 + $1.totalReadingTime }
-            + viewModel.currentlyReading.reduce(0.0) { $0 + $1.totalReadingTime }
         let hours = Int(totalSeconds) / 3600
         let minutes = (Int(totalSeconds) % 3600) / 60
         if hours > 0 { return "\(hours)h \(minutes)m" }

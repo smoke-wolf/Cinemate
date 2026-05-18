@@ -63,6 +63,7 @@ struct LANAdminView: View {
     @State private var showLog = false
     @State private var serverStarting = false
     @State private var clientPollTimer: Timer?
+    @State private var uptimeTimer: Timer?
     @State private var copiedURL: String? = nil
     @State private var showQRCode = false
     @State private var qrURL = ""
@@ -102,6 +103,7 @@ struct LANAdminView: View {
         }
         .onDisappear {
             clientPollTimer?.invalidate()
+            uptimeTimer?.invalidate()
         }
     }
 
@@ -1258,9 +1260,8 @@ struct LANAdminView: View {
                       let name = d["name"] as? String else { return nil }
                 let isOnline = (d["is_online"] as? Int ?? 0) == 1
                 guard isOnline else { return nil }
-                let deviceType = d["device_type"] as? String ?? "unknown"
-                let ip = d["last_seen"] as? String ?? ""
-                return LANClient(id: id, deviceName: name, ipAddress: deviceType, activity: .browsing)
+                let ip = d["ip_address"] as? String ?? ""
+                return LANClient(id: id, deviceName: name, ipAddress: ip, activity: .browsing)
             }
             DispatchQueue.main.async {
                 self.connectedClients = clients
@@ -1436,7 +1437,8 @@ struct LANAdminView: View {
     }
 
     private func startUptimeTimer() {
-        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+        uptimeTimer?.invalidate()
+        uptimeTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
             let elapsed = Int(Date().timeIntervalSince(startTime))
             let hours = elapsed / 3600
             let minutes = (elapsed % 3600) / 60
