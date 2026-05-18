@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Movie, TimestampComment } from '../api/types';
-import { useLibrary } from '../hooks/useLibrary';
 import { useAccounts } from '../hooks/useAccounts';
 import { useServer } from '../hooks/useServer';
 import { api } from '../api/client';
@@ -37,6 +36,15 @@ function formatTimestamp(seconds: number): string {
   const s = Math.floor(seconds % 60);
   if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function DetailInfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex">
+      <span className="text-gray-500 text-[12px] w-[90px] shrink-0">{label}</span>
+      <span className="text-white/90 text-[12px] font-medium">{value}</span>
+    </div>
+  );
 }
 
 export default function MovieDetailSheet({
@@ -106,6 +114,7 @@ export default function MovieDetailSheet({
   };
 
   const hue = movie.title.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+  const isResuming = progress != null && progress > 0 && progress < 1;
 
   return (
     <motion.div
@@ -124,17 +133,17 @@ export default function MovieDetailSheet({
         exit={{ opacity: 0 }}
       />
 
-      {/* Sheet */}
+      {/* Sheet — matching macOS 860x720 proportions */}
       <motion.div
-        className="relative w-[700px] max-h-[85vh] bg-cinema-card rounded-2xl overflow-hidden
-                   border border-white/[0.06] shadow-2xl shadow-black/60"
+        className="relative w-[860px] max-h-[720px] overflow-hidden border border-white/[0.06] shadow-2xl shadow-black/60"
+        style={{ backgroundColor: 'rgb(15, 15, 15)', borderRadius: '16px' }}
         initial={{ scale: 0.92, opacity: 0, y: 40 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.92, opacity: 0, y: 40 }}
         transition={{ type: 'spring', stiffness: 350, damping: 30 }}
       >
-        {/* Header image */}
-        <div className="relative h-[280px] overflow-hidden">
+        {/* ─── Header image / video preview area ─── */}
+        <div className="relative h-[380px] overflow-hidden">
           {movie.thumbnail_path ? (
             <img
               src={movie.thumbnail_path}
@@ -143,206 +152,238 @@ export default function MovieDetailSheet({
             />
           ) : (
             <div
-              className="w-full h-full"
+              className="w-full h-full flex items-center justify-center"
               style={{
                 background: `linear-gradient(135deg, hsl(${hue}, 40%, 12%), hsl(${(hue + 60) % 360}, 50%, 22%))`,
               }}
-            />
+            >
+              <svg className="w-16 h-16 text-white/10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+                <path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+              </svg>
+            </div>
           )}
-          {/* Multi-layer gradient for depth */}
-          <div className="absolute inset-0 bg-gradient-to-t from-cinema-card via-cinema-card/30 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-cinema-card/40 to-transparent" />
 
-          {/* Close button */}
+          {/* Multi-layer gradient overlays */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[rgb(15,15,15)] via-[rgb(15,15,15)]/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[rgb(15,15,15)]/40 to-transparent" />
+
+          {/* Close button — matching macOS ultraThinMaterial circle */}
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60
+            className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm hover:bg-black/70
                        flex items-center justify-center transition-all duration-200 hover:scale-105"
           >
-            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg className="w-[13px] h-[13px] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
 
-          {/* Play button overlay */}
-          <motion.button
-            onClick={onPlay}
-            className="absolute bottom-6 left-6 flex items-center gap-3 px-7 py-3.5 bg-cinema-gold
-                       hover:bg-cinema-gold-hover text-black font-bold rounded-full
-                       transition-all duration-200"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            style={{ boxShadow: '0 4px 20px rgba(212, 160, 23, 0.35)' }}
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-            {progress && progress > 0 && progress < 1 ? 'Resume' : 'Play'}
-          </motion.button>
+          {/* Title overlay at bottom left — matching macOS positioning */}
+          <div className="absolute bottom-3 left-6 right-20">
+            <h2
+              className="text-[28px] font-bold text-white leading-tight"
+              style={{ textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}
+            >
+              {movie.title}
+            </h2>
+          </div>
+
+          {/* Mute button placeholder area (right side) */}
         </div>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(85vh-280px)]">
-          {/* Title row */}
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold text-white mb-1">{movie.title}</h2>
-              <div className="flex items-center gap-3 text-cinema-text-secondary text-sm">
-                {movie.year && <span>{movie.year}</span>}
-                {movie.genre && (
-                  <>
-                    <span className="w-1 h-1 rounded-full bg-cinema-text-dim" />
-                    <span>{movie.genre}</span>
-                  </>
-                )}
-                {movie.format && (
-                  <>
-                    <span className="w-1 h-1 rounded-full bg-cinema-text-dim" />
-                    <span className="uppercase text-xs font-medium">{movie.format}</span>
-                  </>
-                )}
-              </div>
+        {/* ─── Scrollable info section ─── */}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(720px - 380px)' }}>
+          <div className="px-6 py-5 space-y-4">
+            {/* Metadata row: year, genre, rating, duration, quality */}
+            <div className="flex items-center gap-2.5 flex-wrap text-[13px]">
+              {movie.year && (
+                <span className="text-white/80">{movie.year}</span>
+              )}
+              {movie.genre && (
+                <span className="px-2 py-0.5 bg-white/10 rounded text-white/80 text-[13px]">
+                  {movie.genre}
+                </span>
+              )}
+              {movie.rating != null && (
+                <span className="flex items-center gap-1">
+                  <span className="text-[12px]">&#127813;</span>
+                  <span className={`font-bold ${movie.rating >= 6 ? 'text-green-400' : 'text-gray-400'}`}>
+                    {Math.round(movie.rating * 10)}%
+                  </span>
+                </span>
+              )}
+              {movie.duration != null && movie.duration > 0 && (
+                <span className="text-white/60">{formatDuration(movie.duration)}</span>
+              )}
+              {movie.quality && (
+                <span className="text-white/70 text-[11px] font-medium px-1.5 py-0.5 border border-white/30 rounded">
+                  {movie.quality}
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              {/* Favorite */}
+
+            {/* Watch status / progress — matching macOS */}
+            {isWatched && (
+              <div className="flex items-center gap-1.5 text-[12px] font-medium text-green-400">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                </svg>
+                Watched
+              </div>
+            )}
+            {!isWatched && progress != null && progress > 0 && progress < 1 && (
+              <div className="space-y-1">
+                <div className="h-1 bg-white/15 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full bg-red-500"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progress * 100}%` }}
+                    transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
+                  />
+                </div>
+                <span className="text-white/50 text-[11px]">{Math.round(progress * 100)}% watched</span>
+              </div>
+            )}
+
+            {/* Action buttons row — matching macOS layout: Play (full-width), Watched, Favorite */}
+            <div className="flex items-center gap-2.5">
+              <motion.button
+                onClick={() => { onPlay(); onClose(); }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md
+                           text-black text-[15px] font-semibold bg-white hover:bg-gray-100
+                           transition-all duration-200"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                {isResuming ? 'Resume' : 'Play'}
+              </motion.button>
+
+              <motion.button
+                onClick={handleMarkWatched}
+                className={`w-11 h-10 rounded-md flex items-center justify-center transition-all duration-200
+                            ${isWatched
+                              ? 'bg-white/12 text-green-400'
+                              : 'bg-white/12 text-white hover:text-green-400'
+                            }`}
+                whileTap={{ scale: 0.9 }}
+              >
+                <svg className="w-4 h-4" fill={isWatched ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </motion.button>
+
               <motion.button
                 onClick={onToggleFavorite}
-                className="w-10 h-10 rounded-full bg-cinema-surface hover:bg-cinema-border flex items-center justify-center
-                           transition-all duration-200"
+                className={`w-11 h-10 rounded-md flex items-center justify-center transition-all duration-200
+                            ${isFavorited
+                              ? 'bg-white/12 text-red-500'
+                              : 'bg-white/12 text-white hover:text-red-400'
+                            }`}
                 whileTap={{ scale: 0.9 }}
               >
                 <motion.svg
-                  className={`w-5 h-5 ${isFavorited ? 'text-cinema-red' : 'text-cinema-text-secondary'}`}
+                  className="w-4 h-4"
                   fill={isFavorited ? 'currentColor' : 'none'}
                   viewBox="0 0 24 24"
                   stroke="currentColor"
+                  strokeWidth={2}
                   animate={isFavorited ? { scale: [1, 1.3, 1] } : {}}
                   transition={{ duration: 0.3 }}
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                 </motion.svg>
               </motion.button>
-              {/* Mark watched */}
-              <motion.button
-                onClick={handleMarkWatched}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200
-                            ${isWatched ? 'bg-cinema-green/20 text-cinema-green' : 'bg-cinema-surface text-cinema-text-secondary hover:bg-cinema-border'}`}
-                whileTap={{ scale: 0.9 }}
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </motion.button>
             </div>
-          </div>
 
-          {/* Stats row */}
-          <div className="flex items-center gap-4 mb-5">
-            {movie.rating != null && (
-              <div className="flex items-center gap-1.5">
-                <svg className="w-4 h-4 text-cinema-gold" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                </svg>
-                <span className="text-white text-sm font-medium">{movie.rating.toFixed(1)}</span>
-                <span className="text-cinema-text-dim text-xs">({Math.round(movie.rating * 10)}%)</span>
-              </div>
+            {/* Description */}
+            {movie.description && (
+              <p className="text-white/80 text-[13px] leading-[1.6]">{movie.description}</p>
             )}
-            {movie.quality && (
-              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold text-white ${
-                movie.quality.toLowerCase().includes('4k') || movie.quality === '2160p' ? 'badge-4k' :
-                movie.quality === '1080p' ? 'badge-1080p' :
-                movie.quality === '720p' ? 'badge-720p' : 'bg-cinema-surface'
-              }`}>
-                {movie.quality}
-              </span>
-            )}
-            <span className="text-cinema-text-secondary text-sm">{formatDuration(movie.duration)}</span>
-            <span className="text-cinema-text-secondary text-sm">{formatFileSize(movie.file_size)}</span>
-          </div>
 
-          {/* Progress bar */}
-          {progress != null && progress > 0 && progress < 1 && (
-            <div className="mb-5">
-              <div className="flex justify-between text-xs text-cinema-text-dim mb-1.5">
-                <span>Watch Progress</span>
-                <span className="tabular-nums">{Math.round(progress * 100)}%</span>
-              </div>
-              <div className="h-1.5 bg-cinema-surface rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full progress-bar-gold rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress * 100}%` }}
-                  transition={{ duration: 0.6, ease: [0.4, 0, 0.2, 1] }}
-                />
-              </div>
-            </div>
-          )}
+            {/* Divider */}
+            <div className="h-px bg-gray-700/20" />
 
-          {/* Description */}
-          {movie.description && (
-            <p className="text-cinema-text-secondary text-sm leading-relaxed mb-6">{movie.description}</p>
-          )}
-
-          {/* Timestamp comments */}
-          <div className="border-t border-cinema-border pt-5">
-            <h3 className="text-white text-sm font-semibold mb-3">Timestamp Comments</h3>
-
-            {/* Add comment */}
-            <div className="flex gap-2 mb-4">
-              <input
-                type="text"
-                value={newTimestamp}
-                onChange={(e) => setNewTimestamp(e.target.value)}
-                placeholder="0:00"
-                className="w-20 bg-cinema-bg/50 border border-cinema-border rounded-lg px-3 py-2 text-white text-xs font-mono
-                           focus:outline-none focus:border-cinema-gold/50 focus:ring-1 focus:ring-cinema-gold/20
-                           transition-all duration-200"
-              />
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
-                placeholder="Add a comment..."
-                className="flex-1 bg-cinema-bg/50 border border-cinema-border rounded-lg px-3 py-2 text-white text-xs
-                           focus:outline-none focus:border-cinema-gold/50 focus:ring-1 focus:ring-cinema-gold/20
-                           transition-all duration-200"
-              />
-              <motion.button
-                onClick={handleAddComment}
-                className="px-4 py-2 bg-cinema-gold hover:bg-cinema-gold-hover text-black text-xs font-semibold rounded-lg
-                           transition-all duration-200"
-                whileTap={{ scale: 0.95 }}
-              >
-                Add
-              </motion.button>
-            </div>
-
-            {/* Comments list */}
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {comments.length === 0 ? (
-                <p className="text-cinema-text-dim text-xs py-2">No comments yet</p>
-              ) : (
-                comments.map((c, i) => (
-                  <motion.div
-                    key={c.id}
-                    className="flex gap-3 p-2.5 bg-cinema-surface/80 rounded-lg hover:bg-cinema-surface transition-colors duration-150"
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03, duration: 0.2 }}
-                  >
-                    <span className="text-cinema-gold text-xs font-mono shrink-0 mt-0.5 tabular-nums">
-                      {formatTimestamp(c.timestamp_sec)}
-                    </span>
-                    <div>
-                      <p className="text-white text-xs leading-relaxed">{c.comment}</p>
-                      {c.account_name && (
-                        <p className="text-cinema-text-dim text-[10px] mt-0.5">{c.account_name}</p>
-                      )}
-                    </div>
-                  </motion.div>
-                ))
+            {/* Detail info rows — matching macOS DetailInfoRow */}
+            <div className="space-y-1.5">
+              {movie.format && (
+                <DetailInfoRow label="Format" value={`${movie.format}${movie.file_size ? ` · ${formatFileSize(movie.file_size)}` : ''}`} />
               )}
+              {!movie.format && movie.file_size && (
+                <DetailInfoRow label="Size" value={formatFileSize(movie.file_size)} />
+              )}
+              {movie.date_added && (
+                <DetailInfoRow label="Added" value={new Date(movie.date_added).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })} />
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="h-px bg-gray-700/20" />
+
+            {/* Timestamp comments section */}
+            <div>
+              <h3 className="text-white text-sm font-semibold mb-3">Timestamp Comments</h3>
+
+              {/* Add comment form */}
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  value={newTimestamp}
+                  onChange={(e) => setNewTimestamp(e.target.value)}
+                  placeholder="0:00"
+                  className="w-20 bg-cinema-bg/50 border border-cinema-border rounded-lg px-3 py-2 text-white text-xs font-mono
+                             focus:outline-none focus:border-cinema-gold/50 focus:ring-1 focus:ring-cinema-gold/20
+                             transition-all duration-200 placeholder:text-white/20"
+                />
+                <input
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
+                  placeholder="Add a comment..."
+                  className="flex-1 bg-cinema-bg/50 border border-cinema-border rounded-lg px-3 py-2 text-white text-xs
+                             focus:outline-none focus:border-cinema-gold/50 focus:ring-1 focus:ring-cinema-gold/20
+                             transition-all duration-200 placeholder:text-white/20"
+                />
+                <motion.button
+                  onClick={handleAddComment}
+                  className="px-4 py-2 bg-cinema-gold hover:bg-cinema-gold-hover text-black text-xs font-semibold rounded-lg
+                             transition-all duration-200"
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Add
+                </motion.button>
+              </div>
+
+              {/* Comments list */}
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {comments.length === 0 ? (
+                  <p className="text-cinema-text-dim text-xs py-2">No comments yet</p>
+                ) : (
+                  comments.map((c, i) => (
+                    <motion.div
+                      key={c.id}
+                      className="flex gap-3 p-2.5 bg-white/[0.04] rounded-lg hover:bg-white/[0.06] transition-colors duration-150"
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.03, duration: 0.2 }}
+                    >
+                      <span className="text-cinema-gold text-xs font-mono shrink-0 mt-0.5 tabular-nums">
+                        {formatTimestamp(c.timestamp_sec)}
+                      </span>
+                      <div>
+                        <p className="text-white text-xs leading-relaxed">{c.comment}</p>
+                        {c.account_name && (
+                          <p className="text-cinema-text-dim text-[10px] mt-0.5">{c.account_name}</p>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         </div>
