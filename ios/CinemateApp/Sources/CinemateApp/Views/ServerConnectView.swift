@@ -11,8 +11,24 @@ struct ServerConnectView: View {
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var showQRScanner = false
+    @AppStorage("trustedServerIPs") private var trustedServerIPsJSON: String = "[]"
 
     let onConnected: () -> Void
+
+    private var trustedServerIPs: Set<String> {
+        guard let data = trustedServerIPsJSON.data(using: .utf8),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(arr)
+    }
+
+    private func trustServer(ip: String) {
+        var trusted = trustedServerIPs
+        trusted.insert(ip)
+        if let data = try? JSONEncoder().encode(Array(trusted)),
+           let json = String(data: data, encoding: .utf8) {
+            trustedServerIPsJSON = json
+        }
+    }
 
     enum ConnectionStatus: Equatable {
         case idle
@@ -74,7 +90,11 @@ struct ServerConnectView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Theme.cornerMedium))
                         } else {
                             ForEach(discovery.discoveredServers) { server in
-                                ServerCard(server: server) {
+                                ServerCard(
+                                    server: server,
+                                    isTrusted: trustedServerIPs.contains(server.url)
+                                ) {
+                                    trustServer(ip: server.url)
                                     connectToServer(url: "http://\(server.url):\(server.port)")
                                 }
                             }
@@ -258,6 +278,7 @@ struct ServerConnectView: View {
 
 struct ServerCard: View {
     let server: ServerInfo
+    var isTrusted: Bool = false
     let onTap: () -> Void
 
     @State private var isPressed = false
@@ -278,16 +299,35 @@ struct ServerCard: View {
                     Text(server.name)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
-                    Text(server.displayURL)
-                        .font(.system(size: 13))
+                    Text(server.url)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary.opacity(0.8))
+                    Text("Port \(server.port)")
+                        .font(.system(size: 12))
                         .foregroundStyle(Theme.textSecondary)
+                    if !isTrusted {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.shield")
+                                .font(.system(size: 10))
+                            Text("First connection -- verify IP address")
+                                .font(.system(size: 11))
+                        }
+                        .foregroundStyle(.orange)
+                        .padding(.top, 2)
+                    }
                 }
 
                 Spacer()
 
-                Circle()
-                    .fill(Theme.success)
-                    .frame(width: 10, height: 10)
+                if isTrusted {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Theme.success)
+                } else {
+                    Circle()
+                        .fill(Theme.success)
+                        .frame(width: 10, height: 10)
+                }
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))

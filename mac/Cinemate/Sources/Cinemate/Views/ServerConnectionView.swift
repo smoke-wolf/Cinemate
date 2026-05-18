@@ -14,7 +14,20 @@ struct ServerConnectionView: View {
     @State private var hoveredOffline = false
     @State private var hoveredConnect = false
     @AppStorage("lastServerURL") private var lastServerURL = ""
+    @AppStorage("trustedServerIPs") private var trustedServerIPsData: Data = Data()
     @State private var resolveConnections: [NWConnection] = []
+
+    private var trustedServerIPs: Set<String> {
+        (try? JSONDecoder().decode(Set<String>.self, from: trustedServerIPsData)) ?? []
+    }
+
+    private func trustServer(ip: String) {
+        var trusted = trustedServerIPs
+        trusted.insert(ip)
+        if let data = try? JSONEncoder().encode(trusted) {
+            trustedServerIPsData = data
+        }
+    }
 
     private let accentGold = Color(red: 0.85, green: 0.65, blue: 0.13)
     private let warmAmber = Color(red: 0.93, green: 0.76, blue: 0.20)
@@ -167,7 +180,9 @@ struct ServerConnectionView: View {
                 VStack(spacing: 4) {
                     ForEach(discoveredServers) { server in
                         let isHovered = hoveredServer == server.id
+                        let isTrusted = trustedServerIPs.contains(server.host)
                         Button(action: {
+                            trustServer(ip: server.host)
                             connectTo(url: "http://\(server.host):\(server.port)")
                         }) {
                             HStack(spacing: 12) {
@@ -178,11 +193,32 @@ struct ServerConnectionView: View {
                                     Text(server.name)
                                         .font(.system(size: 14, weight: .medium))
                                         .foregroundColor(.white)
-                                    Text("\(server.host):\(server.port)")
+                                    Text(server.host)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.7))
+                                        .textSelection(.enabled)
+                                    Text("Port \(server.port)")
                                         .font(.system(size: 11))
                                         .foregroundColor(.gray)
                                 }
                                 Spacer()
+                                if !isTrusted {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.shield")
+                                            .font(.system(size: 11))
+                                        Text("New")
+                                            .font(.system(size: 10, weight: .medium))
+                                    }
+                                    .foregroundColor(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color.orange.opacity(0.15))
+                                    .cornerRadius(6)
+                                } else {
+                                    Image(systemName: "checkmark.shield.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.green.opacity(0.7))
+                                }
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 11))
                                     .foregroundColor(.gray)
