@@ -4,7 +4,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useServer } from '../hooks/useServer';
 import { api } from '../api/client';
 import * as localDb from '../db/local';
-import type { LibraryStats } from '../api/types';
+import type { LibraryStats, MusicTrack, BookItem } from '../api/types';
 
 function AnimatedCounter({ value, suffix = '' }: { value: number | string; suffix?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -51,7 +51,13 @@ function AnimatedCounter({ value, suffix = '' }: { value: number | string; suffi
   );
 }
 
-function StatCard({ label, value, icon, delay = 0 }: { label: string; value: string | number; icon: React.ReactNode; delay?: number }) {
+function StatCard({ label, value, icon, color = 'cinema-gold', delay = 0 }: {
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+  color?: string;
+  delay?: number;
+}) {
   return (
     <motion.div
       className="bg-cinema-surface rounded-xl p-4 border border-cinema-border
@@ -63,7 +69,7 @@ function StatCard({ label, value, icon, delay = 0 }: { label: string; value: str
       whileHover={{ scale: 1.02, y: -2 }}
     >
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-cinema-gold/10 flex items-center justify-center text-cinema-gold">
+        <div className={`w-10 h-10 rounded-lg bg-${color}/10 flex items-center justify-center text-${color}`}>
           {icon}
         </div>
         <div>
@@ -84,6 +90,12 @@ function formatWatchTime(seconds: number): string {
   return `${mins}m`;
 }
 
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 const GENRE_COLORS = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
   '#3b82f6', '#8b5cf6', '#ec4899', '#a855f7', '#14b8a6',
@@ -94,6 +106,10 @@ export default function ProfileView() {
   const { isOnline } = useServer();
   const [stats, setStats] = useState<LibraryStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recentMusic, setRecentMusic] = useState<MusicTrack[]>([]);
+  const [currentlyReading, setCurrentlyReading] = useState<BookItem[]>([]);
+  const [musicStats, setMusicStats] = useState<{ totalTracks: number; totalListenTime: number } | null>(null);
+  const [bookStats, setBookStats] = useState<{ totalBooks: number; finishedCount: number } | null>(null);
 
   useEffect(() => {
     if (!currentAccount) return;
@@ -101,7 +117,35 @@ export default function ProfileView() {
       setLoading(true);
       try {
         if (isOnline) {
-          setStats(await api.getStats(currentAccount.id));
+          const [statsData, musicData, readingData, mStats, bStats] = await Promise.allSettled([
+            api.getStats(currentAccount.id),
+            api.getRecentlyPlayedMusic(currentAccount.id),
+            api.getCurrentlyReading(currentAccount.id),
+            api.getMusicStats(),
+            api.getBookStats(),
+          ]);
+
+          setStats(statsData.status === 'fulfilled' ? statsData.value : null);
+          setRecentMusic(musicData.status === 'fulfilled' ? musicData.value : []);
+          setCurrentlyReading(readingData.status === 'fulfilled' ? readingData.value : []);
+          setMusicStats(
+            mStats.status === 'fulfilled'
+              ? { totalTracks: mStats.value.total_tracks, totalListenTime: mStats.value.total_duration_seconds }
+              : null
+          );
+          setBookStats(
+            bStats.status === 'fulfilled'
+              ? { totalBooks: bStats.value.total_books, finishedCount: 0 }
+              : null
+          );
+
+          // Load finished books count
+          if (bStats.status === 'fulfilled') {
+            try {
+              const finished = await api.getFinishedBooks(currentAccount.id);
+              setBookStats((prev) => prev ? { ...prev, finishedCount: finished.length } : null);
+            } catch {}
+          }
         } else {
           setStats(await localDb.getStats(currentAccount.id));
         }
@@ -159,7 +203,7 @@ export default function ProfileView() {
         </motion.div>
         <div>
           <h2 className="text-white text-2xl font-bold">{currentAccount.name}</h2>
-          <p className="text-cinema-text-secondary text-sm">Your viewing profile</p>
+          <p className="text-cinema-text-secondary text-sm">Your viewing stats and tastes</p>
         </div>
       </motion.div>
 
@@ -169,7 +213,7 @@ export default function ProfileView() {
         </div>
       ) : (
         <>
-          {/* Stats cards */}
+          {/* Watch Stats */}
           <div className="grid grid-cols-4 gap-4 mb-8">
             <StatCard
               label="Movies Watched"
@@ -184,10 +228,10 @@ export default function ProfileView() {
               icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
             />
             <StatCard
-              label="Avg Rating"
-              value={stats?.avg_rating || '0.0'}
+              label="Shows Watched"
+              value={stats?.show_count || 0}
               delay={0.1}
-              icon={<svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>}
+              icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>}
             />
             <StatCard
               label="Total in Library"
@@ -196,6 +240,48 @@ export default function ProfileView() {
               icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
             />
           </div>
+
+          {/* Music + Reading Stats Row */}
+          {(musicStats || bookStats) && (
+            <div className="grid grid-cols-4 gap-4 mb-8">
+              {musicStats && (
+                <>
+                  <StatCard
+                    label="Tracks Played"
+                    value={musicStats.totalTracks}
+                    delay={0.2}
+                    color="cinema-purple"
+                    icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>}
+                  />
+                  <StatCard
+                    label="Listening Time"
+                    value={formatWatchTime(musicStats.totalListenTime)}
+                    delay={0.25}
+                    color="cinema-purple"
+                    icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414 1.414m2.828-9.9a9 9 0 012.828-2.828" /></svg>}
+                  />
+                </>
+              )}
+              {bookStats && (
+                <>
+                  <StatCard
+                    label="Books in Library"
+                    value={bookStats.totalBooks}
+                    delay={0.3}
+                    color="cinema-blue"
+                    icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>}
+                  />
+                  <StatCard
+                    label="Books Finished"
+                    value={bookStats.finishedCount}
+                    delay={0.35}
+                    color="cinema-blue"
+                    icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                  />
+                </>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-6">
             {/* Genre breakdown */}
@@ -410,6 +496,96 @@ export default function ProfileView() {
                 )}
               </motion.div>
             </div>
+
+            {/* Recently Played Music */}
+            {recentMusic.length > 0 && (
+              <motion.div
+                className="bg-cinema-surface rounded-xl p-5 border border-cinema-border"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45, duration: 0.35 }}
+              >
+                <h3 className="text-white text-sm font-semibold mb-4 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-cinema-purple" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                  </svg>
+                  Recently Played Music
+                </h3>
+                <div className="space-y-2">
+                  {recentMusic.slice(0, 5).map((track, i) => (
+                    <motion.div
+                      key={track.id}
+                      className="flex items-center gap-3 p-1.5 rounded-lg hover:bg-cinema-bg/40 transition-colors duration-150"
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.5 + i * 0.04, duration: 0.2 }}
+                    >
+                      <div className="w-8 h-8 rounded-md bg-cinema-purple/10 flex items-center justify-center text-cinema-purple shrink-0">
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm truncate">{track.title}</p>
+                        <p className="text-cinema-text-dim text-[11px] truncate">{track.artist}</p>
+                      </div>
+                      <span className="text-cinema-text-dim text-[11px] tabular-nums shrink-0">
+                        {formatDuration(track.duration)}
+                      </span>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Currently Reading */}
+            {currentlyReading.length > 0 && (
+              <motion.div
+                className="bg-cinema-surface rounded-xl p-5 border border-cinema-border"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.35 }}
+              >
+                <h3 className="text-white text-sm font-semibold mb-4 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-cinema-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  Currently Reading
+                </h3>
+                <div className="space-y-3">
+                  {currentlyReading.slice(0, 4).map((book, i) => (
+                    <motion.div
+                      key={book.id}
+                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-cinema-bg/40 transition-colors duration-150"
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.55 + i * 0.04, duration: 0.2 }}
+                    >
+                      <div className="w-8 h-10 rounded bg-cinema-blue/10 flex items-center justify-center text-cinema-blue shrink-0">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-sm truncate">{book.title}</p>
+                        {book.author && <p className="text-cinema-text-dim text-[11px] truncate">{book.author}</p>}
+                      </div>
+                      <div className="shrink-0 w-16">
+                        <div className="h-1.5 bg-cinema-bg rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full rounded-full bg-cinema-blue"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.round(book.reading_progress * 100)}%` }}
+                            transition={{ delay: 0.6 + i * 0.05, duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                          />
+                        </div>
+                        <span className="text-cinema-text-dim text-[10px] tabular-nums">{Math.round(book.reading_progress * 100)}%</span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
           </div>
         </>
       )}
